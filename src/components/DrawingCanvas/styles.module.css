@@ -1,0 +1,19 @@
+.drawingCanvasSection {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.drawingCanvasContainer {
+    height: 500px;
+    width: 500px;
+    border: 1px solid grey;
+    border-radius: 5px;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+}
+
+.actionButtonRow {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+}
