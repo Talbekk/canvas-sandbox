@@ -1,7 +1,10 @@
-import React, { FunctionComponent, useCallback } from 'react';
+import React, { FunctionComponent, MouseEvent, MouseEventHandler, useCallback, useState } from 'react';
 import styles from './styles.module.css';
 
 export const DrawingCanvas: FunctionComponent = () => {
+
+    const [ elements, setElements ] = useState<[]>([]);
+    const [ drawing, setDrawing ] = useState<boolean>(false);
 
     const square = useCallback(() => {
         const canvas: any = document.getElementById('certificates-canvas');
@@ -58,14 +61,29 @@ export const DrawingCanvas: FunctionComponent = () => {
         const canvas: any = document.getElementById('certificates-canvas');
         if (canvas?.getContext) {
             const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
-            // @ts-ignore
-            ctx.reset();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
+    }, []);
+
+    const handleMouseDown = useCallback((event: MouseEvent) => {
+        setDrawing(true);
+        const { clientX, clientY } = event;
+        const element = document.createElement(clientX, clientY, clientX, clientY);
+    }, []);
+
+    const handleMouseMove = useCallback((event: MouseEvent) => {
+        if(!drawing) return;
+        const { clientX, clientY } = event;
+        console.log(`event: `, event);
+    }, [drawing]);
+
+    const handleMouseUp = useCallback((event: MouseEvent) => {
+        setDrawing(false);
     }, []);
 
     return (
         <section className={styles.drawingCanvasSection}>
-            <canvas id="certificates-canvas" className={styles.drawingCanvasContainer}>
+            <canvas id="certificates-canvas" className={styles.drawingCanvasContainer} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
                 Custom certificate
             </canvas>
             <div className={styles.actionButtonRow}>
