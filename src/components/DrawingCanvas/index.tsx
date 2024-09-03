@@ -1,10 +1,40 @@
-import React, { FunctionComponent, MouseEvent, MouseEventHandler, useCallback, useState } from 'react';
+import React, { FunctionComponent, MouseEvent, useCallback, useLayoutEffect, useState } from 'react';
 import styles from './styles.module.css';
+
+type LineObject = {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+}
+
+const createLineElement = (x1: number, y1: number, x2: number, y2: number): LineObject => {
+    return {x1, y1, x2, y2};
+}
 
 export const DrawingCanvas: FunctionComponent = () => {
 
-    const [ elements, setElements ] = useState<[]>([]);
+    const [ elements, setElements ] = useState<Array<LineObject>>([]);
     const [ drawing, setDrawing ] = useState<boolean>(false);
+
+    useLayoutEffect(() => {
+        const canvas: any = document.getElementById('certificates-canvas');
+        if (canvas?.getContext) {
+            const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if(elements.length) {
+                ctx.save();
+                elements.forEach((element: LineObject) => {
+                    ctx.beginPath();
+                    ctx.moveTo(element.x1, element.y1);
+                    ctx.lineTo(element.x2, element.y2);
+                    ctx.stroke();
+                });
+                ctx.restore();
+            }
+        }
+    }, [elements]);
 
     const square = useCallback(() => {
         const canvas: any = document.getElementById('certificates-canvas');
@@ -48,12 +78,28 @@ export const DrawingCanvas: FunctionComponent = () => {
             const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
             const rectangle = new Path2D();
             rectangle.rect(10, 10, 50, 50);
-        
+
             const circle = new Path2D();
             circle.arc(100, 35, 25, 0, 2 * Math.PI);
-        
+
             ctx.stroke(rectangle);
             ctx.fill(circle);
+        }
+    }, []);
+
+    const line = useCallback(() => {
+        const canvas: any = document.getElementById('certificates-canvas');
+        if (canvas?.getContext) {
+            const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
+            ctx.beginPath();
+            ctx.moveTo(283, 444);
+            ctx.lineTo(344, 280);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(288, 676);
+            ctx.lineTo(559, 435);
+            ctx.stroke();
         }
     }, []);
 
@@ -62,20 +108,27 @@ export const DrawingCanvas: FunctionComponent = () => {
         if (canvas?.getContext) {
             const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            setElements([]);
         }
     }, []);
 
     const handleMouseDown = useCallback((event: MouseEvent) => {
         setDrawing(true);
-        const { clientX, clientY } = event;
-        const element = document.createElement(clientX, clientY, clientX, clientY);
-    }, []);
+        const { offsetX, offsetY } = event.nativeEvent;
+        const roughElement: LineObject = createLineElement(offsetX, offsetY, offsetX, offsetY);
+        setElements([...elements, roughElement]);
+    }, [elements]);
 
     const handleMouseMove = useCallback((event: MouseEvent) => {
         if(!drawing) return;
-        const { clientX, clientY } = event;
-        console.log(`event: `, event);
-    }, [drawing]);
+        const { offsetX, offsetY } = event.nativeEvent;
+        const index: number = elements.length -1;
+        const {x1, y1} = elements[index];
+        const updatedElement = createLineElement(x1, y1, offsetX, offsetY);
+        const updatedElements = [...elements];
+        updatedElements[index] = updatedElement;
+        setElements(updatedElements);
+    }, [drawing, elements]);
 
     const handleMouseUp = useCallback((event: MouseEvent) => {
         setDrawing(false);
@@ -83,7 +136,7 @@ export const DrawingCanvas: FunctionComponent = () => {
 
     return (
         <section className={styles.drawingCanvasSection}>
-            <canvas id="certificates-canvas" className={styles.drawingCanvasContainer} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
+            <canvas id="certificates-canvas" className={styles.drawingCanvasContainer} height="500" width="500" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
                 Custom certificate
             </canvas>
             <div className={styles.actionButtonRow}>
@@ -91,6 +144,7 @@ export const DrawingCanvas: FunctionComponent = () => {
                 <button onClick={triangle}>Triangle</button>
                 <button onClick={smile}>Smile</button>
                 <button onClick={path2D}>Path2D</button>
+                <button onClick={line}>Line</button>
                 <button onClick={resetCanvas}>Reset</button>
             </div>
         </section>
