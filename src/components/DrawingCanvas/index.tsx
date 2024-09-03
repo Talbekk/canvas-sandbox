@@ -2,15 +2,54 @@ import { ChangeEvent, FunctionComponent, MouseEvent, useCallback, useLayoutEffec
 import styles from './styles.module.css';
 
 type ElementObject = {
+    id: number;
     x1: number;
     y1: number;
     x2: number;
     y2: number;
     type: 'line' | 'square';
+    mouseOffsetX?: number;
+    mouseOffsetY?: number;
 }
 
-const createElement = (x1: number, y1: number, x2: number, y2: number, selectedElement: ElementObject['type']): ElementObject => {
-    return {x1, y1, x2, y2, type: selectedElement};
+type ActionStatus = 'none' | 'drawing' | 'moving';
+
+const distance = (a: {x: number, y: number}, b: {x: number, y: number}) => {
+    return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+}
+
+const isWithinElement = (x: number, y: number, element: ElementObject): boolean => {
+    const { type, x1, y1, x2, y2 } = element; 
+    if(type === 'square') {
+        const minX: number = Math.min(x1, x2);
+        const maxX: number = Math.max(x1, x2);
+        const minY: number = Math.min(y1, y2);
+        const maxY: number = Math.max(y1, y2);
+        return (x >= minX && x <= maxX) && (y >= minY && y <= maxY);
+    } else if (type === 'line'){
+        const a = { x: x1, y: y1 };
+        const b = { x: x2, y: y2 };
+        const c = { x, y };
+        const offset = distance(a, b) - (distance(a, c) + distance(b, c));
+        return Math.abs(offset) < 1;
+    } else {
+        return false;
+    }
+}
+
+const getElementAtPosition = (x: number, y: number, elements: Array<ElementObject>): ElementObject | undefined => {
+    return elements.find((element: ElementObject) => isWithinElement(x, y, element));
+}
+
+const createElement = (id: number, x1: number, y1: number, x2: number, y2: number, selectedTool: ElementObject['type']): ElementObject => {
+    return {id, x1, y1, x2, y2, type: selectedTool};
+}
+
+const updateElement = (id: number, x1: number, y1: number, x2: number, y2: number, type: ElementObject['type'], elements: Array<ElementObject>, setElements: (elements: Array<ElementObject>) => void) => {
+    const updatedElement = createElement(id, x1, y1, x2, y2, type);
+    const updatedElements = [...elements];
+    updatedElements[id] = updatedElement;
+    setElements(updatedElements);
 }
 
 const createLineElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
@@ -27,8 +66,9 @@ const createSquareElement = (element: ElementObject, ctx: CanvasRenderingContext
 export const DrawingCanvas: FunctionComponent = () => {
 
     const [ elements, setElements ] = useState<Array<ElementObject>>([]);
-    const [ drawing, setDrawing ] = useState<boolean>(false);
-    const [ selectedElement, setSelectedElement ] = useState<ElementObject['type']>('line');
+    const [ action, setAction ] = useState<ActionStatus>('none');
+    const [ selectedTool, setSelectedTool ] = useState<'line' | 'square' | 'selection'>('line');
+    const [ selectedElement, setSelectedElement ] = useState<ElementObject | null>(null);
 
     useLayoutEffect(() => {
         const canvas: any = document.getElementById('certificates-canvas');
@@ -54,7 +94,7 @@ export const DrawingCanvas: FunctionComponent = () => {
                 ctx.restore();
             }
         }
-    }, [elements, selectedElement]);
+    }, [elements, selectedTool]);
 
     const square = useCallback(() => {
         const canvas: any = document.getElementById('certificates-canvas');
@@ -133,29 +173,50 @@ export const DrawingCanvas: FunctionComponent = () => {
     }, []);
 
     const handleMouseDown = useCallback((event: MouseEvent) => {
-        setDrawing(true);
         const { offsetX, offsetY } = event.nativeEvent;
-        const roughElement: ElementObject = createElement(offsetX, offsetY, offsetX, offsetY, selectedElement);
-        setElements([...elements, roughElement]);
-    }, [elements, selectedElement]);
+        if(selectedTool === 'selection') {
+            const element: ElementObject | undefined = getElementAtPosition(offsetX, offsetY, elements);
+            if(element){
+                const mouseOffsetX: number = offsetX - element.x1;
+                const mouseOffsetY: number = offsetY - element.y1;
+                setSelectedElement({...element, mouseOffsetX, mouseOffsetY});
+                setAction('moving');
+            }
+        } else {
+            const roughElement: ElementObject = createElement(elements.length, offsetX, offsetY, offsetX, offsetY, selectedTool);
+            setElements([...elements, roughElement]);
+            setAction('drawing');
+        }
+    }, [elements, selectedTool]);
 
     const handleMouseMove = useCallback((event: MouseEvent) => {
-        if(!drawing) return;
         const { offsetX, offsetY } = event.nativeEvent;
-        const index: number = elements.length -1;
-        const {x1, y1} = elements[index];
-        const updatedElement = createElement(x1, y1, offsetX, offsetY, selectedElement);
-        const updatedElements = [...elements];
-        updatedElements[index] = updatedElement;
-        setElements(updatedElements);
-    }, [drawing, elements, selectedElement]);
+
+        if(selectedTool === 'selection' && event.target instanceof HTMLElement) {
+            event.target.style.cursor = getElementAtPosition(offsetX, offsetY, elements) ? 'move' : 'default';
+        }
+        
+        if(action === 'drawing' && selectedTool !== 'selection') {
+            const index: number = elements.length -1;
+            const {x1, y1} = elements[index];
+            updateElement(index, x1, y1, offsetX, offsetY, selectedTool, elements, setElements);
+        } else if (action === 'moving' && selectedElement) {
+            const { id, x1, y1, x2, y2, type, mouseOffsetX, mouseOffsetY } = selectedElement;
+            const width: number = x2 - x1;
+            const height: number = y2 - y1;
+            const updatedOffsetX: number = (mouseOffsetX) ? offsetX - mouseOffsetX : offsetX;
+            const updatedOffsetY: number = (mouseOffsetY) ? offsetY - mouseOffsetY : offsetY;
+            updateElement(id, updatedOffsetX, updatedOffsetY, updatedOffsetX + width, updatedOffsetY + height, type, elements, setElements);
+        }
+    }, [action, elements, selectedElement, selectedTool]);
 
     const handleMouseUp = useCallback((event: MouseEvent) => {
-        setDrawing(false);
+        setSelectedElement(null);
+        setAction('none');
     }, []);
 
     const handleElementSelect = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-        setSelectedElement(event.target.value as ElementObject['type']);
+        setSelectedTool(event.target.value as ElementObject['type']);
     }, []);
 
     return (
@@ -172,11 +233,12 @@ export const DrawingCanvas: FunctionComponent = () => {
                 <button onClick={resetCanvas}>Reset</button>
             </div>
             <div className={styles.drawingRow}>
-                <label className={styles.drawingElementSelectField}>
-                    Drawing Element:
+                <label htmlFor="drawing-element-select" className={styles.drawingElementSelectField}>
+                    Action:
                 <select id="drawing-element-select" onChange={handleElementSelect}>
                     <option value='line'>Line</option>
                     <option value='square'>Square</option>
+                    <option value='selection'>Selection</option>
                 </select>
                 </label>
             </div>
