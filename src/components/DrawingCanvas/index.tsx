@@ -10,6 +10,7 @@ type ElementObject = {
     type: 'line' | 'square';
     mouseOffsetX?: number;
     mouseOffsetY?: number;
+    position?: string | null;
 }
 
 type ActionStatus = 'none' | 'drawing' | 'moving';
@@ -18,27 +19,39 @@ const distance = (a: {x: number, y: number}, b: {x: number, y: number}) => {
     return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
 }
 
-const isWithinElement = (x: number, y: number, element: ElementObject): boolean => {
+const nearPoint = (x: number, y: number, x1: number, y1: number, positionName: string) => {
+    return Math.abs(x - x1) < 5 && Math.abs(y - y1) < 5 ? positionName : null;
+}
+
+const positionWithinElement = (x: number, y: number, element: ElementObject): string | null => {
     const { type, x1, y1, x2, y2 } = element; 
     if(type === 'square') {
-        const minX: number = Math.min(x1, x2);
-        const maxX: number = Math.max(x1, x2);
-        const minY: number = Math.min(y1, y2);
-        const maxY: number = Math.max(y1, y2);
-        return (x >= minX && x <= maxX) && (y >= minY && y <= maxY);
-    } else if (type === 'line'){
+        const topLeft = nearPoint(x, y, x1, y1, 'tl');
+        const topRight = nearPoint(x, y, x2, y1, 'tr');
+        const bottomLeft = nearPoint(x, y, x1, y2, 'bl');
+        const bottomRight = nearPoint(x, y, x2, y2, 'br');
+        const inside = x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
+        const result = topLeft || topRight || bottomLeft || bottomRight || inside;
+        return result;
+    } else {
         const a = { x: x1, y: y1 };
         const b = { x: x2, y: y2 };
         const c = { x, y };
         const offset = distance(a, b) - (distance(a, c) + distance(b, c));
-        return Math.abs(offset) < 1;
-    } else {
-        return false;
+        const start = nearPoint(x, y, x1, y1, 'start');
+        const end = nearPoint(x, y, x2, y2, 'end');
+        const inside = Math.abs(offset) < 1 ? 'inside' : null;
+        const result = start || end || inside;
+        console.log(`line result: `, result);
+        return result;
     }
 }
 
 const getElementAtPosition = (x: number, y: number, elements: Array<ElementObject>): ElementObject | undefined => {
-    return elements.find((element: ElementObject) => isWithinElement(x, y, element));
+    const mappedResults = elements.map((element: ElementObject) => {
+        const position = positionWithinElement(x, y, element);
+        return {...element, position}});
+    return mappedResults.find((element: ElementObject) => element.position !== null);
 }
 
 const createElement = (id: number, x1: number, y1: number, x2: number, y2: number, selectedTool: ElementObject['type']): ElementObject => {
@@ -52,6 +65,25 @@ const updateElement = (id: number, x1: number, y1: number, x2: number, y2: numbe
     setElements(updatedElements);
 }
 
+const adjustElementCoordinates = (element: ElementObject) => {
+    const { type, x1, y1, x2, y2} = element;
+    if(type === 'square') {
+        const minX: number = Math.min(x1, x2);
+        const maxX: number = Math.max(x1, x2);
+        const minY: number = Math.min(y1, y2);
+        const maxY: number = Math.max(y1, y2);
+        return {x1: minX, y1: minY, x2: maxX, y2: maxY};
+    } else {
+        if(x1 < x2 || (x1 === x2 && y1 < y2)) {
+            return {x1, y1, x2, y2};
+        } else {
+            return {x1: x2, y1: y2, x2: x1, y2: y1};
+        }
+
+    }
+}
+  
+
 const createLineElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
     ctx.beginPath();
     ctx.moveTo(element.x1, element.y1);
@@ -61,6 +93,22 @@ const createLineElement = (element: ElementObject, ctx: CanvasRenderingContext2D
 
 const createSquareElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
     ctx.strokeRect(element.x1, element.y1, (element.x2 - element.x1), (element.y2 - element.y1));
+}
+
+const cursorForPosition = (position?: ElementObject['position']) => {
+    if(!position) return 'move';
+    switch (position) {
+        case 'tl':
+        case 'br':
+        case 'start':
+        case 'end':
+            return 'nwse-resize';
+        case 'tr':
+        case 'bl':
+            return 'nesw-resize';
+        default:
+            return 'move';
+    }
 }
 
 export const DrawingCanvas: FunctionComponent = () => {
@@ -193,9 +241,14 @@ export const DrawingCanvas: FunctionComponent = () => {
         const { offsetX, offsetY } = event.nativeEvent;
 
         if(selectedTool === 'selection' && event.target instanceof HTMLElement) {
-            event.target.style.cursor = getElementAtPosition(offsetX, offsetY, elements) ? 'move' : 'default';
+            // console.log(`offsetX: `, offsetX);
+            // console.log(`offsetY: `, offsetY);
+            // console.log(`elements: `, elements);
+            const element = getElementAtPosition(offsetX, offsetY, elements);
+            // console.log(`element: `, element);
+            event.target.style.cursor = element ? cursorForPosition(element.position) : 'default';
         }
-        
+
         if(action === 'drawing' && selectedTool !== 'selection') {
             const index: number = elements.length -1;
             const {x1, y1} = elements[index];
@@ -211,9 +264,15 @@ export const DrawingCanvas: FunctionComponent = () => {
     }, [action, elements, selectedElement, selectedTool]);
 
     const handleMouseUp = useCallback((event: MouseEvent) => {
+        const index: number = elements.length-1;
+        const {id, type} = elements[index];
+        if( action === 'drawing') {
+           const {x1, y1, x2, y2} = adjustElementCoordinates(elements[index]);
+           updateElement(id, x1, y1, x2, y2, type, elements, setElements)
+        }
         setSelectedElement(null);
         setAction('none');
-    }, []);
+    }, [action, elements]);
 
     const handleElementSelect = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
         setSelectedTool(event.target.value as ElementObject['type']);
