@@ -13,7 +13,16 @@ type ElementObject = {
     position?: string | null;
 }
 
-type ActionStatus = 'none' | 'drawing' | 'moving';
+type Coordinates = {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    mouseOffsetX?: number;
+    mouseOffsetY?: number;
+}
+
+type ActionStatus = 'none' | 'drawing' | 'moving' | 'resizing';
 
 const distance = (a: {x: number, y: number}, b: {x: number, y: number}) => {
     return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
@@ -42,7 +51,6 @@ const positionWithinElement = (x: number, y: number, element: ElementObject): st
         const end = nearPoint(x, y, x2, y2, 'end');
         const inside = Math.abs(offset) < 1 ? 'inside' : null;
         const result = start || end || inside;
-        console.log(`line result: `, result);
         return result;
     }
 }
@@ -80,6 +88,24 @@ const adjustElementCoordinates = (element: ElementObject) => {
             return {x1: x2, y1: y2, x2: x1, y2: y1};
         }
 
+    }
+}
+
+const resizedCoordinates = (x: number, y: number, position: string | null, coordinates: Coordinates) => {
+    const { x1, x2, y1, y2 } = coordinates;
+    switch (position) {
+        case 'tl':
+        case "start":
+            return { x1: x, y1: y, x2, y2 };
+        case "tr":
+            return { x1, y1: y, x2: x, y2 };
+        case "bl":
+            return { x1: x, y1, x2, y2: y };
+        case "br":
+        case "end":
+            return { x1, y1, x2: x, y2: y };
+        default:
+            return { x1, x2, y1, y2 };
     }
 }
   
@@ -228,7 +254,12 @@ export const DrawingCanvas: FunctionComponent = () => {
                 const mouseOffsetX: number = offsetX - element.x1;
                 const mouseOffsetY: number = offsetY - element.y1;
                 setSelectedElement({...element, mouseOffsetX, mouseOffsetY});
-                setAction('moving');
+                if(element.position && element.position === 'inside'){
+                    setAction('moving');
+                }
+                else {
+                    setAction('resizing');
+                }
             }
         } else {
             const roughElement: ElementObject = createElement(elements.length, offsetX, offsetY, offsetX, offsetY, selectedTool);
@@ -241,11 +272,7 @@ export const DrawingCanvas: FunctionComponent = () => {
         const { offsetX, offsetY } = event.nativeEvent;
 
         if(selectedTool === 'selection' && event.target instanceof HTMLElement) {
-            // console.log(`offsetX: `, offsetX);
-            // console.log(`offsetY: `, offsetY);
-            // console.log(`elements: `, elements);
             const element = getElementAtPosition(offsetX, offsetY, elements);
-            // console.log(`element: `, element);
             event.target.style.cursor = element ? cursorForPosition(element.position) : 'default';
         }
 
@@ -260,6 +287,10 @@ export const DrawingCanvas: FunctionComponent = () => {
             const updatedOffsetX: number = (mouseOffsetX) ? offsetX - mouseOffsetX : offsetX;
             const updatedOffsetY: number = (mouseOffsetY) ? offsetY - mouseOffsetY : offsetY;
             updateElement(id, updatedOffsetX, updatedOffsetY, updatedOffsetX + width, updatedOffsetY + height, type, elements, setElements);
+        } else if(action === 'resizing' && selectedElement) {
+            const { id, type, position, ...coordinates } = selectedElement;
+            const {x1, x2, y1, y2} = resizedCoordinates(offsetX, offsetY, position || null, coordinates);
+            updateElement(id, x1, y1, x2, y2, type, elements, setElements);
         }
     }, [action, elements, selectedElement, selectedTool]);
 
@@ -267,7 +298,7 @@ export const DrawingCanvas: FunctionComponent = () => {
         const index: number = elements.length-1;
         const {id, type} = elements[index];
         if( action === 'drawing') {
-           const {x1, y1, x2, y2} = adjustElementCoordinates(elements[index]);
+           const { x1, y1, x2, y2 } = adjustElementCoordinates(elements[index]);
            updateElement(id, x1, y1, x2, y2, type, elements, setElements)
         }
         setSelectedElement(null);
