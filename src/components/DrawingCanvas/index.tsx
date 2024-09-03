@@ -7,10 +7,11 @@ type ElementObject = {
     y1: number;
     x2: number;
     y2: number;
-    type: 'line' | 'square';
+    type: 'line' | 'square' | 'text';
     mouseOffsetX?: number;
     mouseOffsetY?: number;
     position?: string | null;
+    text?: string;
 }
 
 type Coordinates = {
@@ -22,7 +23,7 @@ type Coordinates = {
     mouseOffsetY?: number;
 }
 
-type ActionStatus = 'none' | 'drawing' | 'moving' | 'resizing';
+type ActionStatus = 'none' | 'drawing' | 'moving' | 'resizing' | 'writing';
 
 const distance = (a: {x: number, y: number}, b: {x: number, y: number}) => {
     return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
@@ -63,6 +64,9 @@ const getElementAtPosition = (x: number, y: number, elements: Array<ElementObjec
 }
 
 const createElement = (id: number, x1: number, y1: number, x2: number, y2: number, selectedTool: ElementObject['type']): ElementObject => {
+    if(selectedTool === 'text') {
+        return { id, type: selectedTool, x1, y1, x2, y2, text: "" }
+    }
     return {id, x1, y1, x2, y2, type: selectedTool};
 }
 
@@ -121,6 +125,11 @@ const createSquareElement = (element: ElementObject, ctx: CanvasRenderingContext
     ctx.strokeRect(element.x1, element.y1, (element.x2 - element.x1), (element.y2 - element.y1));
 }
 
+const createTextElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
+    ctx.font = "24px sans-serif";
+    ctx.fillText(element.text || "", element.x1, element.y1);
+}
+
 const cursorForPosition = (position?: ElementObject['position']) => {
     if(!position) return 'move';
     switch (position) {
@@ -141,7 +150,7 @@ export const DrawingCanvas: FunctionComponent = () => {
 
     const [ elements, setElements ] = useState<Array<ElementObject>>([]);
     const [ action, setAction ] = useState<ActionStatus>('none');
-    const [ selectedTool, setSelectedTool ] = useState<'line' | 'square' | 'selection'>('line');
+    const [ selectedTool, setSelectedTool ] = useState<'line' | 'square' | 'selection' | 'text'>('line');
     const [ selectedElement, setSelectedElement ] = useState<ElementObject | null>(null);
 
     useLayoutEffect(() => {
@@ -159,6 +168,9 @@ export const DrawingCanvas: FunctionComponent = () => {
                             break;
                         case 'square':
                             createSquareElement(element, ctx);
+                            break;
+                        case 'text':
+                            createTextElement(element, ctx);
                             break;
                         default:
                             createLineElement(element, ctx);
@@ -262,9 +274,10 @@ export const DrawingCanvas: FunctionComponent = () => {
                 }
             }
         } else {
-            const roughElement: ElementObject = createElement(elements.length, offsetX, offsetY, offsetX, offsetY, selectedTool);
-            setElements([...elements, roughElement]);
-            setAction('drawing');
+            const element: ElementObject = createElement(elements.length, offsetX, offsetY, offsetX, offsetY, selectedTool);
+            setElements([...elements, element]);
+            setSelectedElement(element);
+            setAction((element.type === 'text') ? 'writing' : 'drawing');
         }
     }, [elements, selectedTool]);
 
@@ -295,15 +308,17 @@ export const DrawingCanvas: FunctionComponent = () => {
     }, [action, elements, selectedElement, selectedTool]);
 
     const handleMouseUp = useCallback((event: MouseEvent) => {
-        const index: number = elements.length-1;
+        const index: number = selectedElement?.id || elements.length-1;
         const {id, type} = elements[index];
-        if( action === 'drawing') {
+        if( action === 'drawing' || action === 'resizing') {
            const { x1, y1, x2, y2 } = adjustElementCoordinates(elements[index]);
            updateElement(id, x1, y1, x2, y2, type, elements, setElements)
         }
-        setSelectedElement(null);
-        setAction('none');
-    }, [action, elements]);
+        if(action !== 'writing') {
+            setSelectedElement(null);
+            setAction('none');
+        }
+    }, [action, elements, selectedElement?.id]);
 
     const handleElementSelect = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
         setSelectedTool(event.target.value as ElementObject['type']);
@@ -311,6 +326,7 @@ export const DrawingCanvas: FunctionComponent = () => {
 
     return (
         <section className={styles.drawingCanvasSection}>
+            {(action === 'writing') ? <textarea style={{position: 'fixed', top: selectedElement?.y1, left: selectedElement?.x1}}/> : null}
             <canvas id="certificates-canvas" className={styles.drawingCanvasContainer} height="500" width="500" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
                 Custom certificate
             </canvas>
@@ -329,6 +345,7 @@ export const DrawingCanvas: FunctionComponent = () => {
                     <option value='line'>Line</option>
                     <option value='square'>Square</option>
                     <option value='selection'>Selection</option>
+                    <option value='text'>Text</option>
                 </select>
                 </label>
             </div>

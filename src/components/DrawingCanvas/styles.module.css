@@ -20,3 +20,9 @@
     display: flex;
     gap: 1rem;
 }
+
+.canvasTextArea {
+    position: fixed;
+    top: 100;
+    left: 100;
+}
