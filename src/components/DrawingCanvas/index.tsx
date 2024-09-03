@@ -1,21 +1,34 @@
-import React, { FunctionComponent, MouseEvent, useCallback, useLayoutEffect, useState } from 'react';
+import { ChangeEvent, FunctionComponent, MouseEvent, useCallback, useLayoutEffect, useState } from 'react';
 import styles from './styles.module.css';
 
-type LineObject = {
+type ElementObject = {
     x1: number;
     y1: number;
     x2: number;
     y2: number;
+    type: 'line' | 'square';
 }
 
-const createLineElement = (x1: number, y1: number, x2: number, y2: number): LineObject => {
-    return {x1, y1, x2, y2};
+const createElement = (x1: number, y1: number, x2: number, y2: number, selectedElement: ElementObject['type']): ElementObject => {
+    return {x1, y1, x2, y2, type: selectedElement};
+}
+
+const createLineElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
+    ctx.beginPath();
+    ctx.moveTo(element.x1, element.y1);
+    ctx.lineTo(element.x2, element.y2);
+    ctx.stroke();
+}
+
+const createSquareElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
+    ctx.strokeRect(element.x1, element.y1, (element.x2 - element.x1), (element.y2 - element.y1));
 }
 
 export const DrawingCanvas: FunctionComponent = () => {
 
-    const [ elements, setElements ] = useState<Array<LineObject>>([]);
+    const [ elements, setElements ] = useState<Array<ElementObject>>([]);
     const [ drawing, setDrawing ] = useState<boolean>(false);
+    const [ selectedElement, setSelectedElement ] = useState<ElementObject['type']>('line');
 
     useLayoutEffect(() => {
         const canvas: any = document.getElementById('certificates-canvas');
@@ -25,16 +38,23 @@ export const DrawingCanvas: FunctionComponent = () => {
 
             if(elements.length) {
                 ctx.save();
-                elements.forEach((element: LineObject) => {
-                    ctx.beginPath();
-                    ctx.moveTo(element.x1, element.y1);
-                    ctx.lineTo(element.x2, element.y2);
-                    ctx.stroke();
+                elements.forEach((element: ElementObject) => {
+                    switch (element.type) {
+                        case 'line':
+                            createLineElement(element, ctx);
+                            break;
+                        case 'square':
+                            createSquareElement(element, ctx);
+                            break;
+                        default:
+                            createLineElement(element, ctx);
+                            break;
+                    }
                 });
                 ctx.restore();
             }
         }
-    }, [elements]);
+    }, [elements, selectedElement]);
 
     const square = useCallback(() => {
         const canvas: any = document.getElementById('certificates-canvas');
@@ -115,23 +135,27 @@ export const DrawingCanvas: FunctionComponent = () => {
     const handleMouseDown = useCallback((event: MouseEvent) => {
         setDrawing(true);
         const { offsetX, offsetY } = event.nativeEvent;
-        const roughElement: LineObject = createLineElement(offsetX, offsetY, offsetX, offsetY);
+        const roughElement: ElementObject = createElement(offsetX, offsetY, offsetX, offsetY, selectedElement);
         setElements([...elements, roughElement]);
-    }, [elements]);
+    }, [elements, selectedElement]);
 
     const handleMouseMove = useCallback((event: MouseEvent) => {
         if(!drawing) return;
         const { offsetX, offsetY } = event.nativeEvent;
         const index: number = elements.length -1;
         const {x1, y1} = elements[index];
-        const updatedElement = createLineElement(x1, y1, offsetX, offsetY);
+        const updatedElement = createElement(x1, y1, offsetX, offsetY, selectedElement);
         const updatedElements = [...elements];
         updatedElements[index] = updatedElement;
         setElements(updatedElements);
-    }, [drawing, elements]);
+    }, [drawing, elements, selectedElement]);
 
     const handleMouseUp = useCallback((event: MouseEvent) => {
         setDrawing(false);
+    }, []);
+
+    const handleElementSelect = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+        setSelectedElement(event.target.value as ElementObject['type']);
     }, []);
 
     return (
@@ -146,6 +170,15 @@ export const DrawingCanvas: FunctionComponent = () => {
                 <button onClick={path2D}>Path2D</button>
                 <button onClick={line}>Line</button>
                 <button onClick={resetCanvas}>Reset</button>
+            </div>
+            <div className={styles.drawingRow}>
+                <label className={styles.drawingElementSelectField}>
+                    Drawing Element:
+                <select id="drawing-element-select" onChange={handleElementSelect}>
+                    <option value='line'>Line</option>
+                    <option value='square'>Square</option>
+                </select>
+                </label>
             </div>
         </section>
     );
