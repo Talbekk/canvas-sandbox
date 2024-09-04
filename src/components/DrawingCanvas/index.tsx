@@ -35,14 +35,14 @@ const nearPoint = (x: number, y: number, x1: number, y1: number, positionName: s
 
 const positionWithinElement = (x: number, y: number, element: ElementObject): string | null => {
     const { type, x1, y1, x2, y2 } = element; 
-    if(type === 'square' || type === 'text') {
+    if(type === 'square') {
         const topLeft = nearPoint(x, y, x1, y1, 'top-left');
         const topRight = nearPoint(x, y, x2, y1, 'top-right');
         const bottomLeft = nearPoint(x, y, x1, y2, 'bottom-left');
         const bottomRight = nearPoint(x, y, x2, y2, 'bottom-right');
         const inside = x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
         return topLeft || topRight || bottomLeft || bottomRight || inside;
-    } else  {
+    } else if(type === 'line'){
         const a = { x: x1, y: y1 };
         const b = { x: x2, y: y2 };
         const c = { x, y };
@@ -52,6 +52,8 @@ const positionWithinElement = (x: number, y: number, element: ElementObject): st
         const inside = Math.abs(offset) < 1 ? 'inside' : null;
         const result = start || end || inside;
         return result;
+    } else {
+        return  x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
     }
 }
 
@@ -113,6 +115,7 @@ const adjustElementCoordinates = (element: ElementObject) => {
 }
 
 const resizedCoordinates = (x: number, y: number, position: string | null, coordinates: Coordinates) => {
+    console.log("hits resize coordinates");
     const { x1, x2, y1, y2 } = coordinates;
     switch (position) {
         case 'top-left':
@@ -170,7 +173,7 @@ export const DrawingCanvas: FunctionComponent = () => {
     const [ action, setAction ] = useState<ActionStatus>('none');
     const [ selectedTool, setSelectedTool ] = useState<'line' | 'square' | 'selection' | 'text'>('line');
     const [ selectedElement, setSelectedElement ] = useState<ElementObject | null>(null);
-    const textAreaRef = useRef<HTMLTextAreaElement>(null);
+    const textAreaRef = useRef<HTMLInputElement>(null);
 
     useLayoutEffect(() => {
         const canvas: any = document.getElementById('certificates-canvas');
@@ -223,6 +226,7 @@ export const DrawingCanvas: FunctionComponent = () => {
     }, []);
 
     const handleMouseDown = useCallback((event: MouseEvent) => {
+        console.log(`event: `, event);
         if(action === 'writing') return;
         const { offsetX, offsetY } = event.nativeEvent;
         if(selectedTool === 'selection') {
@@ -268,12 +272,14 @@ export const DrawingCanvas: FunctionComponent = () => {
             updateElement(id, updatedOffsetX, updatedOffsetY, updatedOffsetX + width, updatedOffsetY + height, type, elements, setElements, options);
         } else if(action === 'resizing' && selectedElement) {
             const { id, type, position, ...coordinates } = selectedElement;
+            let options = (type === 'text') ? { text: selectedElement.text} : {};
             const {x1, x2, y1, y2} = resizedCoordinates(offsetX, offsetY, position || null, coordinates);
-            updateElement(id, x1, y1, x2, y2, type, elements, setElements);
+            updateElement(id, x1, y1, x2, y2, type, elements, setElements, options);
         }
     }, [action, elements, selectedElement, selectedTool]);
 
-    const handleMouseUp = useCallback((event: MouseEvent) => {
+    const handleMouseUp = useCallback((event: any) => {
+        console.log(`event: `, event);
         const { offsetX, offsetY } = event.nativeEvent;
         if(selectedElement && selectedElement.mouseOffsetX && selectedElement.mouseOffsetY) {
             if(selectedElement.type === 'text' && offsetX - selectedElement.mouseOffsetX === selectedElement.x1 && offsetY - selectedElement.mouseOffsetY === selectedElement.y1) {
@@ -297,7 +303,7 @@ export const DrawingCanvas: FunctionComponent = () => {
         setSelectedTool(event.target.value as ElementObject['type']);
     }, []);
 
-    const handleBlur = useCallback((event: FocusEvent<HTMLTextAreaElement>) => {
+    const handleBlur = useCallback((event: FocusEvent<HTMLInputElement>) => {
         if(selectedElement) {
             const { id, x1, y1, x2, y2, type } = selectedElement;
             setSelectedElement(null);
@@ -309,25 +315,37 @@ export const DrawingCanvas: FunctionComponent = () => {
     return (
         <section className={styles.drawingCanvasSection}>
             {(action === 'writing' && selectedElement) ? 
-                <textarea 
+            <div 
+                style={{     
+                    width: '100%',
+                    position: 'absolute', 
+                    top: selectedElement.y1 - 25, 
+                    left: selectedElement.x1, 
+                    zIndex: 5,
+                }}
+            >
+                <div style={{ 
+                    display: 'flex',
+                }}>
+                    <span>Font</span>
+                    <span>Size</span>
+                    <span>Align</span>
+                    <span>Colour</span>
+                </div>
+                <input 
+                    id='text-area'
                     ref={textAreaRef} 
                     style={{
-                        position: 'absolute', 
-                        width: selectedElement.x2 || '150px',
-                        top: selectedElement?.y1, 
-                        left: selectedElement?.x1, 
-                        zIndex: 5,
+                        width: 'fit-content',
                         font: '24px sans-serif',
-                        margin: 0,
-                        padding: 0,
-                        resize: 'both',
+                        resize: 'none',
                         overflow: 'hidden',
                         whiteSpace: 'pre',
                         background: 'transparent',
                     }} 
                     onBlur={handleBlur} 
-            /> : null}
-            <canvas id="certificates-canvas" className={styles.drawingCanvasContainer} height="500" width="500" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
+            /></div> : null}
+            <canvas id="certificates-canvas" className={styles.drawingCanvasContainer} height="500" width="500" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} >
                 Custom certificate
             </canvas>
             <div className={styles.actionButtonRow}>
