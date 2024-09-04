@@ -185,10 +185,12 @@ export const DrawingCanvas: FunctionComponent = () => {
 
     useEffect(() => {
         const textArea = textAreaRef.current;
-        if(action === 'writing') {
-            textArea?.focus();
-        }
-    }, [action]);
+        if (action === "writing" && textArea) {
+            setTimeout(() => {
+              textArea.focus();
+            }, 0);
+          }
+    }, [action, textAreaRef, selectedElement, selectedElement?.id]);
 
     const resetCanvas = useCallback(() => {
         const canvas: any = document.getElementById('certificates-canvas');
