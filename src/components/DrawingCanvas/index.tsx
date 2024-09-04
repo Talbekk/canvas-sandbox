@@ -1,4 +1,4 @@
-import { ChangeEvent, FunctionComponent, MouseEvent, useCallback, useLayoutEffect, useState } from 'react';
+import { ChangeEvent, FunctionComponent, MouseEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import styles from './styles.module.css';
 
 type ElementObject = {
@@ -152,6 +152,7 @@ export const DrawingCanvas: FunctionComponent = () => {
     const [ action, setAction ] = useState<ActionStatus>('none');
     const [ selectedTool, setSelectedTool ] = useState<'line' | 'square' | 'selection' | 'text'>('line');
     const [ selectedElement, setSelectedElement ] = useState<ElementObject | null>(null);
+    const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
     useLayoutEffect(() => {
         const canvas: any = document.getElementById('certificates-canvas');
@@ -182,72 +183,12 @@ export const DrawingCanvas: FunctionComponent = () => {
         }
     }, [elements, selectedTool]);
 
-    const square = useCallback(() => {
-        const canvas: any = document.getElementById('certificates-canvas');
-        if (canvas?.getContext) {
-            const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
-            ctx.fillRect(125, 50, 75, 75);
+    useEffect(() => {
+        const textArea = textAreaRef.current;
+        if(action === 'writing') {
+            textArea?.focus();
         }
-    }, []);
-
-    const triangle = useCallback(() => {
-        const canvas: any = document.getElementById('certificates-canvas');
-        if (canvas?.getContext) {
-            const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
-            ctx.beginPath();
-            ctx.moveTo(75, 50);
-            ctx.lineTo(100, 75);
-            ctx.lineTo(100, 25);
-            ctx.fill();
-        }
-    }, []);
-
-    const smile = useCallback(() => {
-        const canvas: any = document.getElementById('certificates-canvas');
-        if (canvas?.getContext) {
-            const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
-            ctx.beginPath();
-            ctx.arc(75, 75, 50, 0, Math.PI * 2, true); // Outer circle
-            ctx.moveTo(110, 75);
-            ctx.arc(75, 75, 35, 0, Math.PI, false); // Mouth (clockwise)
-            ctx.moveTo(65, 65);
-            ctx.arc(60, 65, 5, 0, Math.PI * 2, true); // Left eye
-            ctx.moveTo(95, 65);
-            ctx.arc(90, 65, 5, 0, Math.PI * 2, true); // Right eye
-            ctx.stroke();
-        }
-    }, []);
-
-    const path2D = useCallback(() => {
-        const canvas: any = document.getElementById('certificates-canvas');
-        if (canvas?.getContext) {
-            const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
-            const rectangle = new Path2D();
-            rectangle.rect(10, 10, 50, 50);
-
-            const circle = new Path2D();
-            circle.arc(100, 35, 25, 0, 2 * Math.PI);
-
-            ctx.stroke(rectangle);
-            ctx.fill(circle);
-        }
-    }, []);
-
-    const line = useCallback(() => {
-        const canvas: any = document.getElementById('certificates-canvas');
-        if (canvas?.getContext) {
-            const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
-            ctx.beginPath();
-            ctx.moveTo(283, 444);
-            ctx.lineTo(344, 280);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.moveTo(288, 676);
-            ctx.lineTo(559, 435);
-            ctx.stroke();
-        }
-    }, []);
+    }, [action]);
 
     const resetCanvas = useCallback(() => {
         const canvas: any = document.getElementById('certificates-canvas');
@@ -255,6 +196,7 @@ export const DrawingCanvas: FunctionComponent = () => {
             const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             setElements([]);
+            setSelectedElement(null);
         }
     }, []);
 
@@ -326,20 +268,12 @@ export const DrawingCanvas: FunctionComponent = () => {
 
     return (
         <section className={styles.drawingCanvasSection}>
-            {(action === 'writing') ? <textarea style={{position: 'fixed', top: selectedElement?.y1, left: selectedElement?.x1}}/> : null}
+            {(action === 'writing' && selectedElement) ? <textarea ref={textAreaRef} style={{position: 'relative', width: '150px', top: selectedElement?.y1, left: selectedElement?.x1, zIndex: 1}}/> : null}
             <canvas id="certificates-canvas" className={styles.drawingCanvasContainer} height="500" width="500" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
                 Custom certificate
             </canvas>
             <div className={styles.actionButtonRow}>
-                <button onClick={square}>Square</button>
-                <button onClick={triangle}>Triangle</button>
-                <button onClick={smile}>Smile</button>
-                <button onClick={path2D}>Path2D</button>
-                <button onClick={line}>Line</button>
-                <button onClick={resetCanvas}>Reset</button>
-            </div>
-            <div className={styles.drawingRow}>
-                <label htmlFor="drawing-element-select" className={styles.drawingElementSelectField}>
+            <label htmlFor="drawing-element-select" className={styles.drawingElementSelectField}>
                     Action:
                 <select id="drawing-element-select" onChange={handleElementSelect}>
                     <option value='line'>Line</option>
@@ -348,6 +282,7 @@ export const DrawingCanvas: FunctionComponent = () => {
                     <option value='text'>Text</option>
                 </select>
                 </label>
+                <button onClick={resetCanvas}>Reset</button>
             </div>
         </section>
     );
