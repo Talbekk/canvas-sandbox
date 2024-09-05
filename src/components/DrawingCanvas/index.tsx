@@ -139,7 +139,7 @@ export const DrawingCanvas: FunctionComponent = () => {
 
     const [ elements, setElements ] = useState<Array<ElementObject>>([]);
     const [ action, setAction ] = useState<ActionStatus>('none');
-    const [ selectedTool, setSelectedTool ] = useState< 'square' | 'selection' | 'text'>('square');
+    const [ selectedTool, setSelectedTool ] = useState< 'square' | 'selection' | 'text'>('text');
     const [ selectedElement, setSelectedElement ] = useState<ElementObject | null>(null);
     const textAreaRef = useRef<HTMLInputElement>(null);
 
@@ -148,7 +148,60 @@ export const DrawingCanvas: FunctionComponent = () => {
         if (canvas?.getContext) {
             const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+            // ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            // ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // const MARIO_WIDTH = 32;
+            // const MARIO_HEIGHT = 39;
+            // const img = new Image();
+            // img.src = "../public/certificate-background.jpeg"
+            // img.onload = () => {
+            //     ctx.drawImage(
+            //         img,
+            //          0, // sx
+            //          MARIO_HEIGHT * 2, // sy
+            //          MARIO_WIDTH, // sWidth
+            //          MARIO_HEIGHT, // sHeight
+            //          0, // dx
+            //          0, // dy
+            //          MARIO_WIDTH, // dWidth
+            //          MARIO_HEIGHT 
+            //     );
+            // }
+            const image = new Image();
+            // const image = document.getElementById("source");
+            image.src = '/certificate-background.png';
+            // if(image) {
+            //     image.onload = () => {
+            //         const factor  = Math.min ( canvas.width / image.width, canvas.height / image.height );
+            //         ctx.scale(factor, factor);
+            //         ctx.drawImage(image, 0, 0);
+            //         ctx.scale(1 / factor, 1 / factor);
+                    // var hRatio = canvas.width  / image.width    ;
+                    // var vRatio =  canvas.height / image.height  ;
+                    // var ratio  = Math.min ( hRatio, vRatio );
+                    // var centerShift_x = ( canvas.width - image.width*ratio ) / 2;
+                    // var centerShift_y = ( canvas.height - image.height*ratio ) / 2;  
+                    // // ctx.clearRect(0,0,canvas.width, canvas.height);
+                    // ctx.drawImage(image, 0,0, image.width, image.height, centerShift_x,centerShift_y,image.width*ratio, image.height*ratio); 
+                    // // canvas.width = image.naturalWidth;
+                    // canvas.height = image.naturalHeight;
+                    // const pattern = ctx.createPattern(image, 'repeat');
+                    // if(pattern) {
+                    //     ctx.fillStyle = pattern; 
+                    //     ctx.fillRect(0, 0, canvas.width, canvas.height)
+                    // }
+                  
+                    // Will draw the image as 300x227, ignoring the custom size of 60x45
+                    // given in the constructor
+                    // ctx.drawImage(image, 0, 0);
+                  
+                    // To use the custom size we'll have to specify the scale parameters
+                    // using the element's width and height properties - lets draw one
+                    // on top in the corner:
+                    // ctx.drawImage(image, 0, 0, image.width, image.height);
+                    // ctx.drawImage(image, 33, 71, 104, 124, 21, 20, 87, 104);
+            //     }
+            // }
             if(elements.length) {
                 ctx.save();
                 elements.forEach((element: ElementObject) => {
@@ -167,6 +220,19 @@ export const DrawingCanvas: FunctionComponent = () => {
                 });
                 ctx.restore();
             }
+
+            ctx.save();
+            ctx.globalCompositeOperation = "destination-over";
+
+            if(image) {
+                image.onload = () => {
+                    const factor  = Math.min ( canvas.width / image.width, canvas.height / image.height );
+                    ctx.scale(factor, factor);
+                    ctx.drawImage(image, 0, 0);
+                    ctx.scale(1 / factor, 1 / factor);
+                }}
+                ctx.restore();
+
         }
     }, [action, elements, selectedElement?.id, selectedTool]);
 
@@ -279,6 +345,15 @@ export const DrawingCanvas: FunctionComponent = () => {
 
     return (
         <section className={styles.drawingCanvasSection}>
+            {/* <div>
+                <img
+                    id="source"
+                    src="./certificate-background.jpeg"
+                    width="300"
+                    height="227"
+                    alt="Rhino" 
+                />
+            </div> */}
             {(action === 'writing' && selectedElement) ? 
             <div 
                 style={{     
@@ -317,9 +392,9 @@ export const DrawingCanvas: FunctionComponent = () => {
             <label htmlFor="drawing-element-select" className={styles.drawingElementSelectField}>
                     Action:
                 <select id="drawing-element-select" onChange={handleElementSelect}>
+                    <option value='text'>Text</option>
                     <option value='square'>Square</option>
                     <option value='selection'>Selection</option>
-                    <option value='text'>Text</option>
                 </select>
                 </label>
                 <button onClick={resetCanvas}>Reset</button>
