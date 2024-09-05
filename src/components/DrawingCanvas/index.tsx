@@ -7,7 +7,7 @@ type ElementObject = {
     y1: number;
     x2: number;
     y2: number;
-    type: 'line' | 'square' | 'text';
+    type: 'square' | 'text';
     mouseOffsetX?: number;
     mouseOffsetY?: number;
     position?: string | null;
@@ -25,10 +25,6 @@ type Coordinates = {
 
 type ActionStatus = 'none' | 'drawing' | 'moving' | 'resizing' | 'writing';
 
-const distance = (a: {x: number, y: number}, b: {x: number, y: number}) => {
-    return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
-}
-
 const nearPoint = (x: number, y: number, x1: number, y1: number, positionName: string) => {
     return Math.abs(x - x1) < 5 && Math.abs(y - y1) < 5 ? positionName : null;
 }
@@ -42,16 +38,6 @@ const positionWithinElement = (x: number, y: number, element: ElementObject): st
         const bottomRight = nearPoint(x, y, x2, y2, 'bottom-right');
         const inside = x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
         return topLeft || topRight || bottomLeft || bottomRight || inside;
-    } else if(type === 'line'){
-        const a = { x: x1, y: y1 };
-        const b = { x: x2, y: y2 };
-        const c = { x, y };
-        const offset = distance(a, b) - (distance(a, c) + distance(b, c));
-        const start = nearPoint(x, y, x1, y1, 'start');
-        const end = nearPoint(x, y, x2, y2, 'end');
-        const inside = Math.abs(offset) < 1 ? 'inside' : null;
-        const result = start || end || inside;
-        return result;
     } else {
         return  x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
     }
@@ -74,7 +60,6 @@ const createElement = (id: number, x1: number, y1: number, x2: number, y2: numbe
 const updateElement = (id: number, x1: number, y1: number, x2: number, y2: number, type: ElementObject['type'], elements: Array<ElementObject>, setElements: (elements: Array<ElementObject>) => void, options?: {[key: string]: any}) => {
     const updatedElements = [...elements];
     switch (type) {
-        case 'line':
         case 'square':
             updatedElements[id] = createElement(id, x1, y1, x2, y2, type);
             break;
@@ -97,21 +82,12 @@ const updateElement = (id: number, x1: number, y1: number, x2: number, y2: numbe
 }
 
 const adjustElementCoordinates = (element: ElementObject) => {
-    const { type, x1, y1, x2, y2} = element;
-    if(type === 'square' || type === 'text') {
-        const minX: number = Math.min(x1, x2);
-        const maxX: number = Math.max(x1, x2);
-        const minY: number = Math.min(y1, y2);
-        const maxY: number = Math.max(y1, y2);
-        return {x1: minX, y1: minY, x2: maxX, y2: maxY};
-    } else {
-        if(x1 < x2 || (x1 === x2 && y1 < y2)) {
-            return {x1, y1, x2, y2};
-        } else {
-            return {x1: x2, y1: y2, x2: x1, y2: y1};
-        }
-
-    }
+    const { x1, y1, x2, y2} = element;
+    const minX: number = Math.min(x1, x2);
+    const maxX: number = Math.max(x1, x2);
+    const minY: number = Math.min(y1, y2);
+    const maxY: number = Math.max(y1, y2);
+    return {x1: minX, y1: minY, x2: maxX, y2: maxY};
 }
 
 const resizedCoordinates = (x: number, y: number, position: string | null, coordinates: Coordinates) => {
@@ -131,14 +107,6 @@ const resizedCoordinates = (x: number, y: number, position: string | null, coord
         default:
             return { x1, x2, y1, y2 };
     }
-}
-  
-
-const createLineElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
-    ctx.beginPath();
-    ctx.moveTo(element.x1, element.y1);
-    ctx.lineTo(element.x2, element.y2);
-    ctx.stroke();
 }
 
 const createSquareElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
@@ -171,7 +139,7 @@ export const DrawingCanvas: FunctionComponent = () => {
 
     const [ elements, setElements ] = useState<Array<ElementObject>>([]);
     const [ action, setAction ] = useState<ActionStatus>('none');
-    const [ selectedTool, setSelectedTool ] = useState<'line' | 'square' | 'selection' | 'text'>('line');
+    const [ selectedTool, setSelectedTool ] = useState< 'square' | 'selection' | 'text'>('square');
     const [ selectedElement, setSelectedElement ] = useState<ElementObject | null>(null);
     const textAreaRef = useRef<HTMLInputElement>(null);
 
@@ -186,9 +154,6 @@ export const DrawingCanvas: FunctionComponent = () => {
                 elements.forEach((element: ElementObject) => {
                     if(action === 'writing' && selectedElement?.id === element.id) return;
                     switch (element.type) {
-                        case 'line':
-                            createLineElement(element, ctx);
-                            break;
                         case 'square':
                             createSquareElement(element, ctx);
                             break;
@@ -196,7 +161,7 @@ export const DrawingCanvas: FunctionComponent = () => {
                             createTextElement(element, ctx);
                             break;
                         default:
-                            createLineElement(element, ctx);
+                            createSquareElement(element, ctx);
                             break;
                     }
                 });
@@ -352,7 +317,6 @@ export const DrawingCanvas: FunctionComponent = () => {
             <label htmlFor="drawing-element-select" className={styles.drawingElementSelectField}>
                     Action:
                 <select id="drawing-element-select" onChange={handleElementSelect}>
-                    <option value='line'>Line</option>
                     <option value='square'>Square</option>
                     <option value='selection'>Selection</option>
                     <option value='text'>Text</option>
