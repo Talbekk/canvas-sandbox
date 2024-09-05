@@ -7,7 +7,7 @@ type ElementObject = {
     y1: number;
     x2: number;
     y2: number;
-    type: 'square' | 'text';
+    type: 'text';
     mouseOffsetX?: number;
     mouseOffsetY?: number;
     position?: string | null;
@@ -23,54 +23,74 @@ type Coordinates = {
     mouseOffsetY?: number;
 }
 
+export type Dimensions = {
+    width: number;
+    height: number;
+};
+
+export type Box = {
+    width: number;
+    height: number;
+    x: number;
+    y: number;
+};
+
+export type TextBlock = {
+    type: 'text';
+    boundingBox: Box;
+    text: string;
+    fontSize: number;
+    fontFamily: string; // TODO We likely want a strict subset of fonts as the backend will only support so many
+    color: string;
+    align: 'left' | 'right' | 'center';
+    verticalAlign: 'top' | 'bottom' | 'center' | 'hanging'; // TODO Is hanging a good name, this is where like the bottom of p's go under the line
+};
+
 type ActionStatus = 'none' | 'drawing' | 'moving' | 'resizing' | 'writing';
 
 const nearPoint = (x: number, y: number, x1: number, y1: number, positionName: string) => {
     return Math.abs(x - x1) < 5 && Math.abs(y - y1) < 5 ? positionName : null;
 }
 
-const positionWithinElement = (x: number, y: number, element: ElementObject): string | null => {
-    const { type, x1, y1, x2, y2 } = element; 
-    if(type === 'square') {
-        const topLeft = nearPoint(x, y, x1, y1, 'top-left');
-        const topRight = nearPoint(x, y, x2, y1, 'top-right');
-        const bottomLeft = nearPoint(x, y, x1, y2, 'bottom-left');
-        const bottomRight = nearPoint(x, y, x2, y2, 'bottom-right');
-        const inside = x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
-        return topLeft || topRight || bottomLeft || bottomRight || inside;
-    } else {
+const positionWithinElement = (x: number, y: number, block: ElementObject): string | null => {
+    const { type, x1, y1, x2, y2 } = block; 
+    // if(type === 'square') {
+    //     const topLeft = nearPoint(x, y, x1, y1, 'top-left');
+    //     const topRight = nearPoint(x, y, x2, y1, 'top-right');
+    //     const bottomLeft = nearPoint(x, y, x1, y2, 'bottom-left');
+    //     const bottomRight = nearPoint(x, y, x2, y2, 'bottom-right');
+    //     const inside = x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
+    //     return topLeft || topRight || bottomLeft || bottomRight || inside;
+    // } else {
         return  x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
-    }
+    // }
 }
 
-const getElementAtPosition = (x: number, y: number, elements: Array<ElementObject>): ElementObject | undefined => {
-    const mappedResults = elements.map((element: ElementObject) => {
-        const position = positionWithinElement(x, y, element);
-        return {...element, position}});
-    return mappedResults.find((element: ElementObject) => element.position !== null);
+const getElementAtPosition = (x: number, y: number, blocks: Array<ElementObject>): ElementObject | undefined => {
+    const mappedResults = blocks.map((block: ElementObject) => {
+        const position = positionWithinElement(x, y, block);
+        return {...block, position}});
+    return mappedResults.find((block: ElementObject) => block.position !== null);
 }
 
-const createElement = (id: number, x1: number, y1: number, x2: number, y2: number, selectedTool: ElementObject['type']): ElementObject => {
+const createBlock = (id: number, x1: number, y1: number, x2: number, y2: number, selectedTool: ElementObject['type']): ElementObject => {
     if(selectedTool === 'text') {
         return { id, type: selectedTool, x1, y1, x2, y2, text: "" }
     }
     return {id, x1, y1, x2, y2, type: selectedTool};
 }
 
-const updateElement = (id: number, x1: number, y1: number, x2: number, y2: number, type: ElementObject['type'], elements: Array<ElementObject>, setElements: (elements: Array<ElementObject>) => void, options?: {[key: string]: any}) => {
-    const updatedElements = [...elements];
+const updateBlock = (id: number, x1: number, y1: number, x2: number, y2: number, type: ElementObject['type'], blocks: Array<ElementObject>, setBlocks: (blocks: Array<ElementObject>) => void, options?: {[key: string]: any}) => {
+    const updatedBlocks = [...blocks];
     switch (type) {
-        case 'square':
-            updatedElements[id] = createElement(id, x1, y1, x2, y2, type);
-            break;
         case 'text':
             const canvas: any = document.getElementById('certificates-canvas');
             if (canvas?.getContext && options) {
                 const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
                 const textWidth = ctx.measureText(options.text).width;
                 const textHeight = 24;
-                updatedElements[id] = {
-                    ...createElement(id, x1, y1, x1 + textWidth, y1 + textHeight, type),
+                updatedBlocks[id] = {
+                    ...createBlock(id, x1, y1, x1 + textWidth, y1 + textHeight, type),
                     text: options.text,
                 };
             }
@@ -78,11 +98,11 @@ const updateElement = (id: number, x1: number, y1: number, x2: number, y2: numbe
         default:
             throw new Error(`Type not recognised: ${type}`);
     }
-    setElements(updatedElements);
+    setBlocks(updatedBlocks);
 }
 
-const adjustElementCoordinates = (element: ElementObject) => {
-    const { x1, y1, x2, y2} = element;
+const adjustElementCoordinates = (block: ElementObject) => {
+    const { x1, y1, x2, y2} = block;
     const minX: number = Math.min(x1, x2);
     const maxX: number = Math.max(x1, x2);
     const minY: number = Math.min(y1, y2);
@@ -109,14 +129,10 @@ const resizedCoordinates = (x: number, y: number, position: string | null, coord
     }
 }
 
-const createSquareElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
-    ctx.strokeRect(element.x1, element.y1, (element.x2 - element.x1), (element.y2 - element.y1));
-}
-
-const createTextElement = (element: ElementObject, ctx: CanvasRenderingContext2D) => {
+const createTextElement = (block: ElementObject, ctx: CanvasRenderingContext2D) => {
     ctx.textBaseline = 'top';
     ctx.font = "24px sans-serif";
-    ctx.fillText(element.text || "", element.x1, element.y1);
+    ctx.fillText(block.text || "", block.x1, block.y1);
 }
 
 const cursorForPosition = (position?: ElementObject['position']) => {
@@ -135,123 +151,133 @@ const cursorForPosition = (position?: ElementObject['position']) => {
     }
 }
 
+const renderTextBlock = (context: CanvasRenderingContext2D, textBlock: TextBlock) => {
+    const {
+        boundingBox,
+        text,
+        color,
+        fontFamily,
+        fontSize: idealFontSize,
+        align,
+        verticalAlign,
+    } = textBlock;
+
+    const testSize = (test: number): boolean => {
+        context.font = `${test}px ${textBlock.fontFamily}`;
+        const measurements = context.measureText(textBlock.text);
+        const width = measurements.width;
+        const height = measurements.actualBoundingBoxAscent;
+        return width <= textBlock.boundingBox.width && height <= textBlock.boundingBox.height;
+    };
+
+    const getMaximumFontSizeThatFits = (attemptFontSize: number): number => {
+        // TODO a better default?
+        if (attemptFontSize <= 1) {
+            return attemptFontSize;
+        }
+        if (testSize(attemptFontSize)) {
+            return attemptFontSize;
+        }
+        return getMaximumFontSizeThatFits(attemptFontSize - 1);
+    };
+
+    const getAlignmentXOffset = (fontSize: number): number => {
+        context.font = `${fontSize}px ${fontFamily}`;
+        const textWidth = context.measureText(text).width;
+        switch (align) {
+            case 'left':
+                return boundingBox.x;
+            case 'center':
+                return boundingBox.x + boundingBox.width / 2 - textWidth / 2;
+            case 'right':
+                return boundingBox.x + boundingBox.width - textWidth;
+        }
+    };
+
+    const getAlignmentYOffsetAndBaseline = (): { y: number; baseline: CanvasTextBaseline } => {
+        switch (verticalAlign) {
+            case 'hanging': {
+                return { y: boundingBox.y + boundingBox.height, baseline: 'alphabetic' };
+            }
+            case 'top': {
+                return { y: boundingBox.y, baseline: 'hanging' };
+            }
+            case 'center': {
+                context.textBaseline = 'alphabetic';
+                const textHeight = context.measureText(text).actualBoundingBoxAscent;
+                return {
+                    y: boundingBox.y + boundingBox.height / 2 + textHeight / 2,
+                    baseline: 'alphabetic',
+                };
+            }
+            case 'bottom': {
+                return { y: boundingBox.y + boundingBox.height, baseline: 'bottom' };
+            }
+        }
+    };
+
+    const fontSize = getMaximumFontSizeThatFits(idealFontSize);
+    context.font = `${fontSize}px ${fontFamily}`;
+    const x = getAlignmentXOffset(fontSize);
+    const { y, baseline } = getAlignmentYOffsetAndBaseline();
+    context.textBaseline = baseline;
+    context.fillStyle = color;
+    context.fillText(text, x, y);
+};
+
+
+const renderBlock = (context: CanvasRenderingContext2D, block: ElementObject) => {
+    switch (block.type) {
+        case 'text': {
+            return createTextElement(block, context);
+        }
+        default:
+            throw new Error(`Type not recognised: ${block.type}`);
+    }
+};
+
 export const DrawingCanvas: FunctionComponent = () => {
 
-    const [ elements, setElements ] = useState<Array<ElementObject>>([]);
+    const [ blocks, setBlocks ] = useState<Array<ElementObject>>([]);
     const [ action, setAction ] = useState<ActionStatus>('none');
-    const [ selectedTool, setSelectedTool ] = useState< 'square' | 'selection' | 'text'>('text');
-    const [ selectedElement, setSelectedElement ] = useState<ElementObject | null>(null);
+    const [ selectedTool, setSelectedTool ] = useState< 'selection' | 'text'>('text');
+    const [ selectedBlock, setSelectedElement ] = useState<ElementObject | null>(null);
     const textAreaRef = useRef<HTMLInputElement>(null);
 
     useLayoutEffect(() => {
         const canvas: any = document.getElementById('certificates-canvas');
         if (canvas?.getContext) {
             const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            // ctx.fillStyle = 'rgba(0,0,0,0.5)';
-            // ctx.fillRect(0, 0, canvas.width, canvas.height);
-            // const MARIO_WIDTH = 32;
-            // const MARIO_HEIGHT = 39;
-            // const img = new Image();
-            // img.src = "../public/certificate-background.jpeg"
-            // img.onload = () => {
-            //     ctx.drawImage(
-            //         img,
-            //          0, // sx
-            //          MARIO_HEIGHT * 2, // sy
-            //          MARIO_WIDTH, // sWidth
-            //          MARIO_HEIGHT, // sHeight
-            //          0, // dx
-            //          0, // dy
-            //          MARIO_WIDTH, // dWidth
-            //          MARIO_HEIGHT 
-            //     );
-            // }
             const image = new Image();
-            // const image = document.getElementById("source");
             image.src = '/certificate-background.png';
-            // if(image) {
-            //     image.onload = () => {
-            //         const factor  = Math.min ( canvas.width / image.width, canvas.height / image.height );
-            //         ctx.scale(factor, factor);
-            //         ctx.drawImage(image, 0, 0);
-            //         ctx.scale(1 / factor, 1 / factor);
-                    // var hRatio = canvas.width  / image.width    ;
-                    // var vRatio =  canvas.height / image.height  ;
-                    // var ratio  = Math.min ( hRatio, vRatio );
-                    // var centerShift_x = ( canvas.width - image.width*ratio ) / 2;
-                    // var centerShift_y = ( canvas.height - image.height*ratio ) / 2;  
-                    // // ctx.clearRect(0,0,canvas.width, canvas.height);
-                    // ctx.drawImage(image, 0,0, image.width, image.height, centerShift_x,centerShift_y,image.width*ratio, image.height*ratio); 
-                    // // canvas.width = image.naturalWidth;
-                    // canvas.height = image.naturalHeight;
-                    // const pattern = ctx.createPattern(image, 'repeat');
-                    // if(pattern) {
-                    //     ctx.fillStyle = pattern; 
-                    //     ctx.fillRect(0, 0, canvas.width, canvas.height)
-                    // }
-                  
-                    // Will draw the image as 300x227, ignoring the custom size of 60x45
-                    // given in the constructor
-                    // ctx.drawImage(image, 0, 0);
-                  
-                    // To use the custom size we'll have to specify the scale parameters
-                    // using the element's width and height properties - lets draw one
-                    // on top in the corner:
-                    // ctx.drawImage(image, 0, 0, image.width, image.height);
-                    // ctx.drawImage(image, 33, 71, 104, 124, 21, 20, 87, 104);
-            //     }
-            // }
-            if(elements.length) {
+            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+            if(blocks.length) {
                 ctx.save();
-                elements.forEach((element: ElementObject) => {
-                    if(action === 'writing' && selectedElement?.id === element.id) return;
-                    switch (element.type) {
-                        case 'square':
-                            createSquareElement(element, ctx);
-                            break;
-                        case 'text':
-                            createTextElement(element, ctx);
-                            break;
-                        default:
-                            createSquareElement(element, ctx);
-                            break;
-                    }
+                blocks.forEach((block: ElementObject) => {
+                    if(action === 'writing' && selectedBlock?.id === block.id) return;
+                    renderBlock(ctx, block);
                 });
                 ctx.restore();
             }
-
-            ctx.save();
-            ctx.globalCompositeOperation = "destination-over";
-
-            if(image) {
-                image.onload = () => {
-                    const factor  = Math.min ( canvas.width / image.width, canvas.height / image.height );
-                    ctx.scale(factor, factor);
-                    ctx.drawImage(image, 0, 0);
-                    ctx.scale(1 / factor, 1 / factor);
-                }}
-                ctx.restore();
-
         }
-    }, [action, elements, selectedElement?.id, selectedTool]);
+    }, [action, blocks, selectedBlock?.id, selectedTool]);
 
     useEffect(() => {
         const textArea = textAreaRef.current;
         if (action === "writing" && textArea) {
             setTimeout(() => {
               textArea.focus();
-              textArea.value = selectedElement?.text || "";
+              textArea.value = selectedBlock?.text || "";
             }, 0);
           }
-    }, [action, textAreaRef, selectedElement, selectedElement?.id]);
+    }, [action, textAreaRef, selectedBlock, selectedBlock?.id]);
 
     const resetCanvas = useCallback(() => {
         const canvas: any = document.getElementById('certificates-canvas');
         if (canvas?.getContext) {
             const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            setElements([]);
+            setBlocks([]);
             setSelectedElement(null);
         }
     }, []);
@@ -261,12 +287,12 @@ export const DrawingCanvas: FunctionComponent = () => {
         if(action === 'writing') return;
         const { offsetX, offsetY } = event.nativeEvent;
         if(selectedTool === 'selection') {
-            const element: ElementObject | undefined = getElementAtPosition(offsetX, offsetY, elements);
-            if(element){
-                const mouseOffsetX: number = offsetX - element.x1;
-                const mouseOffsetY: number = offsetY - element.y1;
-                setSelectedElement({...element, mouseOffsetX, mouseOffsetY});
-                if(element.position && element.position === 'inside'){
+            const block: ElementObject | undefined = getElementAtPosition(offsetX, offsetY, blocks);
+            if(block){
+                const mouseOffsetX: number = offsetX - block.x1;
+                const mouseOffsetY: number = offsetY - block.y1;
+                setSelectedElement({...block, mouseOffsetX, mouseOffsetY});
+                if(block.position && block.position === 'inside'){
                     setAction('moving');
                 }
                 else {
@@ -274,74 +300,74 @@ export const DrawingCanvas: FunctionComponent = () => {
                 }
             }
         } else {
-            const element: ElementObject = createElement(elements.length, offsetX, offsetY, offsetX, offsetY, selectedTool);
-            setElements([...elements, element]);
-            setSelectedElement(element);
-            setAction((element.type === 'text') ? 'writing' : 'drawing');
+            const block: ElementObject = createBlock(blocks.length, offsetX, offsetY, offsetX, offsetY, selectedTool);
+            setBlocks([...blocks, block]);
+            setSelectedElement(block);
+            setAction((block.type === 'text') ? 'writing' : 'drawing');
         }
-    }, [action, elements, selectedTool]);
+    }, [action, blocks, selectedTool]);
 
     const handleMouseMove = useCallback((event: MouseEvent) => {
         const { offsetX, offsetY } = event.nativeEvent;
 
         if(selectedTool === 'selection' && event.target instanceof HTMLElement) {
-            const element = getElementAtPosition(offsetX, offsetY, elements);
-            event.target.style.cursor = element ? cursorForPosition(element.position) : 'default';
+            const block = getElementAtPosition(offsetX, offsetY, blocks);
+            event.target.style.cursor = block ? cursorForPosition(block.position) : 'default';
         }
 
         if(action === 'drawing' && selectedTool !== 'selection') {
-            const index: number = elements.length -1;
-            const {x1, y1} = elements[index];
-            updateElement(index, x1, y1, offsetX, offsetY, selectedTool, elements, setElements);
-        } else if (action === 'moving' && selectedElement) {
-            const { id, x1, y1, x2, y2, type, mouseOffsetX, mouseOffsetY } = selectedElement;
+            const index: number = blocks.length -1;
+            const {x1, y1} = blocks[index];
+            updateBlock(index, x1, y1, offsetX, offsetY, selectedTool, blocks, setBlocks);
+        } else if (action === 'moving' && selectedBlock) {
+            const { id, x1, y1, x2, y2, type, mouseOffsetX, mouseOffsetY } = selectedBlock;
             const width: number = x2 - x1;
             const height: number = y2 - y1;
             const updatedOffsetX: number = (mouseOffsetX) ? offsetX - mouseOffsetX : offsetX;
             const updatedOffsetY: number = (mouseOffsetY) ? offsetY - mouseOffsetY : offsetY;
-            const options = (type === 'text') ? { text: selectedElement.text} : {};
-            updateElement(id, updatedOffsetX, updatedOffsetY, updatedOffsetX + width, updatedOffsetY + height, type, elements, setElements, options);
-        } else if(action === 'resizing' && selectedElement) {
-            const { id, type, position, ...coordinates } = selectedElement;
-            let options = (type === 'text') ? { text: selectedElement.text} : {};
+            const options = (type === 'text') ? { text: selectedBlock.text} : {};
+            updateBlock(id, updatedOffsetX, updatedOffsetY, updatedOffsetX + width, updatedOffsetY + height, type, blocks, setBlocks, options);
+        } else if(action === 'resizing' && selectedBlock) {
+            const { id, type, position, ...coordinates } = selectedBlock;
+            let options = (type === 'text') ? { text: selectedBlock.text} : {};
             const {x1, x2, y1, y2} = resizedCoordinates(offsetX, offsetY, position || null, coordinates);
-            updateElement(id, x1, y1, x2, y2, type, elements, setElements, options);
+            updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks, options);
         }
-    }, [action, elements, selectedElement, selectedTool]);
+    }, [action, blocks, selectedBlock, selectedTool]);
 
     const handleMouseUp = useCallback((event: any) => {
         console.log(`event: `, event);
         const { offsetX, offsetY } = event.nativeEvent;
-        if(selectedElement && selectedElement.mouseOffsetX && selectedElement.mouseOffsetY) {
-            if(selectedElement.type === 'text' && offsetX - selectedElement.mouseOffsetX === selectedElement.x1 && offsetY - selectedElement.mouseOffsetY === selectedElement.y1) {
+        if(selectedBlock && selectedBlock.mouseOffsetX && selectedBlock.mouseOffsetY) {
+            if(selectedBlock.type === 'text' && offsetX - selectedBlock.mouseOffsetX === selectedBlock.x1 && offsetY - selectedBlock.mouseOffsetY === selectedBlock.y1) {
                 setAction('writing');
                 return;
             }
-            const index: number = selectedElement.id;
-            const {id, type} = elements[index];
+            const index: number = selectedBlock.id;
+            const {id, type} = blocks[index];
             if( action === 'drawing' || action === 'resizing') {
-               const { x1, y1, x2, y2 } = adjustElementCoordinates(elements[index]);
-               updateElement(id, x1, y1, x2, y2, type, elements, setElements);
+               const { x1, y1, x2, y2 } = adjustElementCoordinates(blocks[index]);
+               updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks);
             }
         }
         if(action !== 'writing') {
             setSelectedElement(null);
             setAction('none');
         }
-    }, [action, elements, selectedElement]);
+    }, [action, blocks, selectedBlock]);
 
     const handleElementSelect = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
         setSelectedTool(event.target.value as ElementObject['type']);
     }, []);
 
     const handleBlur = useCallback((event: FocusEvent<HTMLInputElement>) => {
-        if(selectedElement) {
-            const { id, x1, y1, x2, y2, type } = selectedElement;
+        if(selectedBlock) {
+            const { id, x1, y1, x2, y2, type } = selectedBlock;
             setSelectedElement(null);
-            updateElement(id, x1, y1, x2, y2, type, elements, setElements, { text: event.target.value });
+            updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks, { text: event.target.value });
         }
         setAction('none');
-    }, [elements, selectedElement]);
+    }, [blocks, selectedBlock]);
 
     return (
         <section className={styles.drawingCanvasSection}>
@@ -354,13 +380,13 @@ export const DrawingCanvas: FunctionComponent = () => {
                     alt="Rhino" 
                 />
             </div> */}
-            {(action === 'writing' && selectedElement) ? 
+            {(action === 'writing' && selectedBlock) ? 
             <div 
                 style={{     
                     width: '100%',
                     position: 'absolute', 
-                    top: selectedElement.y1 - 25, 
-                    left: selectedElement.x1, 
+                    top: selectedBlock.y1 - 25, 
+                    left: selectedBlock.x1, 
                     zIndex: 5,
                 }}
             >
@@ -393,7 +419,6 @@ export const DrawingCanvas: FunctionComponent = () => {
                     Action:
                 <select id="drawing-element-select" onChange={handleElementSelect}>
                     <option value='text'>Text</option>
-                    <option value='square'>Square</option>
                     <option value='selection'>Selection</option>
                 </select>
                 </label>
