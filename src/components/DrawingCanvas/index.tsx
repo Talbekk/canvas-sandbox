@@ -1,32 +1,6 @@
 import { ChangeEvent, FocusEvent, FunctionComponent, MouseEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import styles from './styles.module.css';
-
-type ElementObject = {
-    id: number;
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-    type: 'text';
-    mouseOffsetX?: number;
-    mouseOffsetY?: number;
-    position?: string | null;
-    text?: string;
-}
-
-type Coordinates = {
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-    mouseOffsetX?: number;
-    mouseOffsetY?: number;
-}
-
-export type Dimensions = {
-    width: number;
-    height: number;
-};
+const { v4: uuidv4 } = require('uuid');
 
 export type Box = {
     width: number;
@@ -36,6 +10,7 @@ export type Box = {
 };
 
 export type TextBlock = {
+    id: string;
     type: 'text';
     boundingBox: Box;
     text: string;
@@ -44,6 +19,9 @@ export type TextBlock = {
     color: string;
     align: 'left' | 'right' | 'center';
     verticalAlign: 'top' | 'bottom' | 'center' | 'hanging'; // TODO Is hanging a good name, this is where like the bottom of p's go under the line
+    mouseOffsetX?: number;
+    mouseOffsetY?: number;
+    position?: string | null;
 };
 
 type ActionStatus = 'none' | 'drawing' | 'moving' | 'resizing' | 'writing';
@@ -52,35 +30,42 @@ const nearPoint = (x: number, y: number, x1: number, y1: number, positionName: s
     return Math.abs(x - x1) < 5 && Math.abs(y - y1) < 5 ? positionName : null;
 }
 
-const positionWithinElement = (x: number, y: number, block: ElementObject): string | null => {
-    const { type, x1, y1, x2, y2 } = block; 
-    // if(type === 'square') {
-    //     const topLeft = nearPoint(x, y, x1, y1, 'top-left');
-    //     const topRight = nearPoint(x, y, x2, y1, 'top-right');
-    //     const bottomLeft = nearPoint(x, y, x1, y2, 'bottom-left');
-    //     const bottomRight = nearPoint(x, y, x2, y2, 'bottom-right');
-    //     const inside = x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
-    //     return topLeft || topRight || bottomLeft || bottomRight || inside;
-    // } else {
-        return  x >= x1 && x <= x2 && y >= y1 && y <= y2 ? 'inside' : null;
-    // }
+const positionWithinElement = (x: number, y: number, boundingBox: Box): string | null => {
+    const topLeft = nearPoint(x, y, boundingBox.x, boundingBox.y, 'top-left');
+    const topRight = nearPoint(x, y, boundingBox.x + boundingBox.width, boundingBox.y, 'top-right');
+    const bottomLeft = nearPoint(x, y, boundingBox.x, boundingBox.y + boundingBox.height, 'bottom-left');
+    const bottomRight = nearPoint(x, y, boundingBox.x + boundingBox.width, boundingBox.y + boundingBox.height, 'bottom-right');
+    const inside = x >= boundingBox.x && x <= boundingBox.x + boundingBox.width && y >= boundingBox.y && y <= boundingBox.y + boundingBox.height ? 'inside' : null;
+    return topLeft || topRight || bottomLeft || bottomRight || inside;
 }
 
-const getElementAtPosition = (x: number, y: number, blocks: Array<ElementObject>): ElementObject | undefined => {
-    const mappedResults = blocks.map((block: ElementObject) => {
-        const position = positionWithinElement(x, y, block);
+const getElementAtPosition = (x: number, y: number, blocks: Array<TextBlock>): TextBlock | undefined => {
+    const mappedResults = blocks.map((block: TextBlock) => {
+        const position = positionWithinElement(x, y, block.boundingBox);
         return {...block, position}});
-    return mappedResults.find((block: ElementObject) => block.position !== null);
+    return mappedResults.find((block: TextBlock) => block.position !== null);
 }
 
-const createBlock = (id: number, x1: number, y1: number, x2: number, y2: number, selectedTool: ElementObject['type']): ElementObject => {
-    if(selectedTool === 'text') {
-        return { id, type: selectedTool, x1, y1, x2, y2, text: "" }
+const createTextBlock = (x1: number, y1: number, width: number, height: number, text?: string, id?: string): TextBlock => {
+    return {
+        id: id ? id : uuidv4(),
+        type: 'text',
+        boundingBox: {
+            width: width,
+            height: height,
+            x: x1,
+            y: y1,
+        },
+        text: text || "",
+        fontSize: 24,
+        fontFamily: 'Arial',
+        color: 'black',
+        align: 'left',
+        verticalAlign: 'top', 
     }
-    return {id, x1, y1, x2, y2, type: selectedTool};
 }
 
-const updateBlock = (id: number, x1: number, y1: number, x2: number, y2: number, type: ElementObject['type'], blocks: Array<ElementObject>, setBlocks: (blocks: Array<ElementObject>) => void, options?: {[key: string]: any}) => {
+const updateBlock = (id: string, x1: number, y1: number, type: TextBlock['type'], blocks: Array<TextBlock>, setBlocks: (blocks: Array<TextBlock>) => void, options?: {[key: string]: any}) => {
     const updatedBlocks = [...blocks];
     switch (type) {
         case 'text':
@@ -89,10 +74,10 @@ const updateBlock = (id: number, x1: number, y1: number, x2: number, y2: number,
                 const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
                 const textWidth = ctx.measureText(options.text).width;
                 const textHeight = 24;
-                updatedBlocks[id] = {
-                    ...createBlock(id, x1, y1, x1 + textWidth, y1 + textHeight, type),
-                    text: options.text,
-                };
+                const updatedBlocksIndex: number = updatedBlocks.findIndex((block: TextBlock) => block.id === id);
+                if(updatedBlocksIndex !== -1) {
+                    updatedBlocks[updatedBlocksIndex] = createTextBlock(x1, y1, textWidth, textHeight, options.text, id);
+                }
             }
             break;
         default:
@@ -101,47 +86,47 @@ const updateBlock = (id: number, x1: number, y1: number, x2: number, y2: number,
     setBlocks(updatedBlocks);
 }
 
-const adjustElementCoordinates = (block: ElementObject) => {
-    const { x1, y1, x2, y2} = block;
-    const minX: number = Math.min(x1, x2);
-    const maxX: number = Math.max(x1, x2);
-    const minY: number = Math.min(y1, y2);
-    const maxY: number = Math.max(y1, y2);
-    return {x1: minX, y1: minY, x2: maxX, y2: maxY};
+const adjustElementCoordinates = (boundingBox: Box): Box => {
+    // const { x: x1, y1, x2, y2} = block;
+    const x2: number = boundingBox.x + boundingBox.width;
+    const y2: number = boundingBox.y + boundingBox.height;
+    const minX: number = Math.min(boundingBox.x, x2);
+    const maxX: number = Math.max(boundingBox.x, x2);
+    const minY: number = Math.min(boundingBox.y, y2);
+    const maxY: number = Math.max(boundingBox.y, y2);
+    return {
+        x: minX, 
+        y: minY, 
+        width: maxX - minX, 
+        height: maxY - minY
+    };
 }
 
-const resizedCoordinates = (x: number, y: number, position: string | null, coordinates: Coordinates) => {
-    console.log("hits resize coordinates");
-    const { x1, x2, y1, y2 } = coordinates;
-    switch (position) {
-        case 'top-left':
-        case "start":
-            return { x1: x, y1: y, x2, y2 };
-        case "top-right":
-            return { x1, y1: y, x2: x, y2 };
-        case "bottom-left":
-            return { x1: x, y1, x2, y2: y };
-        case "bottom-right":
-        case "end":
-            return { x1, y1, x2: x, y2: y };
-        default:
-            return { x1, x2, y1, y2 };
-    }
-}
+// const resizedCoordinates = (x: number, y: number, position: string | null, boundingBox: Box): Box => {
+//     console.log("hits resize coordinates");
+//     const x2: number = boundingBox.x + boundingBox.width;
+//     const y2: number = boundingBox.y + boundingBox.height;
+//     switch (position) {
+//         case 'top-left':
+//         case "start":
+//             return {...boundingBox, x, y};
+//         case "top-right":
+//             return { x1, y1: y, x2: x, y2 };
+//         case "bottom-left":
+//             return { x1: x, y1, x2, y2: y };
+//         case "bottom-right":
+//         case "end":
+//             return { x1, y1, x2: x, y2: y };
+//         default:
+//             return { x1, x2, y1, y2 };
+//     }
+// }
 
-const createTextElement = (block: ElementObject, ctx: CanvasRenderingContext2D) => {
-    ctx.textBaseline = 'top';
-    ctx.font = "24px sans-serif";
-    ctx.fillText(block.text || "", block.x1, block.y1);
-}
-
-const cursorForPosition = (position?: ElementObject['position']) => {
+const cursorForPosition = (position?: TextBlock['position']) => {
     if(!position) return 'move';
     switch (position) {
         case 'top-left':
         case 'bottom-right':
-        case 'start':
-        case 'end':
             return 'nwse-resize';
         case 'top-right':
         case 'bottom-left':
@@ -226,10 +211,10 @@ const renderTextBlock = (context: CanvasRenderingContext2D, textBlock: TextBlock
 };
 
 
-const renderBlock = (context: CanvasRenderingContext2D, block: ElementObject) => {
+const renderBlock = (context: CanvasRenderingContext2D, block: TextBlock) => {
     switch (block.type) {
         case 'text': {
-            return createTextElement(block, context);
+            return renderTextBlock(context, block);
         }
         default:
             throw new Error(`Type not recognised: ${block.type}`);
@@ -238,10 +223,10 @@ const renderBlock = (context: CanvasRenderingContext2D, block: ElementObject) =>
 
 export const DrawingCanvas: FunctionComponent = () => {
 
-    const [ blocks, setBlocks ] = useState<Array<ElementObject>>([]);
+    const [ blocks, setBlocks ] = useState<Array<TextBlock>>([]);
     const [ action, setAction ] = useState<ActionStatus>('none');
-    const [ selectedTool, setSelectedTool ] = useState< 'selection' | 'text'>('text');
-    const [ selectedBlock, setSelectedElement ] = useState<ElementObject | null>(null);
+    const [ selectedTool, setSelectedTool ] = useState<'selection' | 'text'>('text');
+    const [ selectedBlock, setSelectedElement ] = useState<TextBlock | null>(null);
     const textAreaRef = useRef<HTMLInputElement>(null);
 
     useLayoutEffect(() => {
@@ -253,7 +238,7 @@ export const DrawingCanvas: FunctionComponent = () => {
             ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
             if(blocks.length) {
                 ctx.save();
-                blocks.forEach((block: ElementObject) => {
+                blocks.forEach((block: TextBlock) => {
                     if(action === 'writing' && selectedBlock?.id === block.id) return;
                     renderBlock(ctx, block);
                 });
@@ -287,10 +272,10 @@ export const DrawingCanvas: FunctionComponent = () => {
         if(action === 'writing') return;
         const { offsetX, offsetY } = event.nativeEvent;
         if(selectedTool === 'selection') {
-            const block: ElementObject | undefined = getElementAtPosition(offsetX, offsetY, blocks);
+            const block: TextBlock | undefined = getElementAtPosition(offsetX, offsetY, blocks);
             if(block){
-                const mouseOffsetX: number = offsetX - block.x1;
-                const mouseOffsetY: number = offsetY - block.y1;
+                const mouseOffsetX: number = offsetX - block.boundingBox.x;
+                const mouseOffsetY: number = offsetY - block.boundingBox.y;
                 setSelectedElement({...block, mouseOffsetX, mouseOffsetY});
                 if(block.position && block.position === 'inside'){
                     setAction('moving');
@@ -300,7 +285,7 @@ export const DrawingCanvas: FunctionComponent = () => {
                 }
             }
         } else {
-            const block: ElementObject = createBlock(blocks.length, offsetX, offsetY, offsetX, offsetY, selectedTool);
+            const block: TextBlock = createTextBlock(offsetX, offsetY, 50, 24);
             setBlocks([...blocks, block]);
             setSelectedElement(block);
             setAction((block.type === 'text') ? 'writing' : 'drawing');
@@ -316,38 +301,35 @@ export const DrawingCanvas: FunctionComponent = () => {
         }
 
         if(action === 'drawing' && selectedTool !== 'selection') {
-            const index: number = blocks.length -1;
-            const {x1, y1} = blocks[index];
-            updateBlock(index, x1, y1, offsetX, offsetY, selectedTool, blocks, setBlocks);
+            const id: string = blocks[blocks.length-1].id;
+            updateBlock(id, offsetX, offsetY, selectedTool, blocks, setBlocks);
         } else if (action === 'moving' && selectedBlock) {
-            const { id, x1, y1, x2, y2, type, mouseOffsetX, mouseOffsetY } = selectedBlock;
-            const width: number = x2 - x1;
-            const height: number = y2 - y1;
+            const { id, type, mouseOffsetX, mouseOffsetY } = selectedBlock;
             const updatedOffsetX: number = (mouseOffsetX) ? offsetX - mouseOffsetX : offsetX;
             const updatedOffsetY: number = (mouseOffsetY) ? offsetY - mouseOffsetY : offsetY;
-            const options = (type === 'text') ? { text: selectedBlock.text} : {};
-            updateBlock(id, updatedOffsetX, updatedOffsetY, updatedOffsetX + width, updatedOffsetY + height, type, blocks, setBlocks, options);
+            updateBlock(id, updatedOffsetX, updatedOffsetY, type, blocks, setBlocks, { text: selectedBlock.text});
         } else if(action === 'resizing' && selectedBlock) {
-            const { id, type, position, ...coordinates } = selectedBlock;
-            let options = (type === 'text') ? { text: selectedBlock.text} : {};
-            const {x1, x2, y1, y2} = resizedCoordinates(offsetX, offsetY, position || null, coordinates);
-            updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks, options);
+            // const { id, type, position, ...coordinates } = selectedBlock;
+            // let options = (type === 'text') ? { text: selectedBlock.text} : {};
+            // const {x1, x2, y1, y2} = resizedCoordinates(offsetX, offsetY, position || null, coordinates);
+            // updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks, options);
         }
     }, [action, blocks, selectedBlock, selectedTool]);
 
     const handleMouseUp = useCallback((event: any) => {
-        console.log(`event: `, event);
         const { offsetX, offsetY } = event.nativeEvent;
         if(selectedBlock && selectedBlock.mouseOffsetX && selectedBlock.mouseOffsetY) {
-            if(selectedBlock.type === 'text' && offsetX - selectedBlock.mouseOffsetX === selectedBlock.x1 && offsetY - selectedBlock.mouseOffsetY === selectedBlock.y1) {
+            if(selectedBlock.type === 'text' && offsetX - selectedBlock.mouseOffsetX === selectedBlock.boundingBox.x && offsetY - selectedBlock.mouseOffsetY === selectedBlock.boundingBox.y) {
                 setAction('writing');
                 return;
             }
-            const index: number = selectedBlock.id;
-            const {id, type} = blocks[index];
-            if( action === 'drawing' || action === 'resizing') {
-               const { x1, y1, x2, y2 } = adjustElementCoordinates(blocks[index]);
-               updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks);
+            const index: number = blocks.findIndex((block: TextBlock) => block.id === selectedBlock.id);
+            if(index !== -1) {
+                const {id, type} = blocks[index];
+                if( action === 'drawing' || action === 'resizing') {
+                //    const { x1, y1, x2, y2 } = adjustElementCoordinates(blocks[index]);
+                //    updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks);
+                }
             }
         }
         if(action !== 'writing') {
@@ -357,36 +339,27 @@ export const DrawingCanvas: FunctionComponent = () => {
     }, [action, blocks, selectedBlock]);
 
     const handleElementSelect = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-        setSelectedTool(event.target.value as ElementObject['type']);
+        setSelectedTool(event.target.value as TextBlock['type']);
     }, []);
 
     const handleBlur = useCallback((event: FocusEvent<HTMLInputElement>) => {
         if(selectedBlock) {
-            const { id, x1, y1, x2, y2, type } = selectedBlock;
+            const { id, boundingBox, type } = selectedBlock;
             setSelectedElement(null);
-            updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks, { text: event.target.value });
+            updateBlock(id, boundingBox.x, boundingBox.y, type, blocks, setBlocks, { text: event.target.value });
         }
         setAction('none');
     }, [blocks, selectedBlock]);
 
     return (
         <section className={styles.drawingCanvasSection}>
-            {/* <div>
-                <img
-                    id="source"
-                    src="./certificate-background.jpeg"
-                    width="300"
-                    height="227"
-                    alt="Rhino" 
-                />
-            </div> */}
             {(action === 'writing' && selectedBlock) ? 
             <div 
                 style={{     
                     width: '100%',
                     position: 'absolute', 
-                    top: selectedBlock.y1 - 25, 
-                    left: selectedBlock.x1, 
+                    top: selectedBlock.boundingBox.y - 25, 
+                    left: selectedBlock.boundingBox.x, 
                     zIndex: 5,
                 }}
             >
