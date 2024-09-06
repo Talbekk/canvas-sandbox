@@ -46,18 +46,13 @@ const getElementAtPosition = (x: number, y: number, blocks: Array<TextBlock>): T
     return mappedResults.find((block: TextBlock) => block.position !== null);
 }
 
-const createTextBlock = (x1: number, y1: number, width: number, height: number, text?: string, id?: string): TextBlock => {
+const createTextBlock = (boundingBox: Box, text?: string, id?: string, fontSize?: number): TextBlock => {
     return {
         id: id ? id : uuidv4(),
         type: 'text',
-        boundingBox: {
-            width: width,
-            height: height,
-            x: x1,
-            y: y1,
-        },
+        boundingBox,
         text: text || "",
-        fontSize: 24,
+        fontSize: fontSize || 24,
         fontFamily: 'Arial',
         color: 'black',
         align: 'left',
@@ -65,18 +60,25 @@ const createTextBlock = (x1: number, y1: number, width: number, height: number, 
     }
 }
 
+const getBoxArea = (boundingBox: Box): number => {
+    return boundingBox.height * boundingBox.width;
+}
+
+const getScaleFactor = (boxAHeight: number, boxBHeight: number): number => {
+    return boxAHeight / boxBHeight;
+}
+
 const updateBlock = (id: string, boundingBox: Box, type: TextBlock['type'], blocks: Array<TextBlock>, setBlocks: (blocks: Array<TextBlock>) => void, options?: {[key: string]: any}) => {
     const updatedBlocks = [...blocks];
     switch (type) {
         case 'text':
-            // const canvas: any = document.getElementById('certificates-canvas');
             if (options) {
-                // const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
-                // const textWidth = ctx.measureText(options.text).width;
-                // const textHeight = 24;
                 const updatedBlocksIndex: number = updatedBlocks.findIndex((block: TextBlock) => block.id === id);
                 if(updatedBlocksIndex !== -1) {
-                    updatedBlocks[updatedBlocksIndex] = createTextBlock(boundingBox.x, boundingBox.y, boundingBox.width, boundingBox.height, options.text, id);
+                    const hasBoxSizeChanged = getBoxArea(boundingBox) !== getBoxArea(updatedBlocks[updatedBlocksIndex].boundingBox);
+                    const scaleFactor: number = getScaleFactor(boundingBox.height, updatedBlocks[updatedBlocksIndex].boundingBox.height);
+                    const fontSize: number = hasBoxSizeChanged ? 24 * scaleFactor : 24;
+                    updatedBlocks[updatedBlocksIndex] = createTextBlock(boundingBox, options.text, id, fontSize);
                 }
             }
                 break;
@@ -87,7 +89,6 @@ const updateBlock = (id: string, boundingBox: Box, type: TextBlock['type'], bloc
 }
 
 const adjustElementCoordinates = (boundingBox: Box): Box => {
-    // const { x: x1, y1, x2, y2} = block;
     const x2: number = boundingBox.x + boundingBox.width;
     const y2: number = boundingBox.y + boundingBox.height;
     const minX: number = Math.min(boundingBox.x, x2);
@@ -231,8 +232,8 @@ const renderTextBlock = (context: CanvasRenderingContext2D, textBlock: TextBlock
             }
         }
     };
-
-    const fontSize = getMaximumFontSizeThatFits(idealFontSize);
+    const maxSize = (context.canvas.width / context.measureText(text.trim()).width) * idealFontSize;
+    const fontSize = getMaximumFontSizeThatFits(maxSize);
     context.font = `${fontSize}px ${fontFamily}`;
     const x = getAlignmentXOffset(fontSize); 
     const { y, baseline } = getAlignmentYOffsetAndBaseline();
@@ -317,7 +318,7 @@ export const DrawingCanvas: FunctionComponent = () => {
                 }
             }
         } else {
-            const block: TextBlock = createTextBlock(offsetX, offsetY, 50, 24);
+            const block: TextBlock = createTextBlock({x: offsetX, y: offsetY, width: 50, height: 24});
             setBlocks([...blocks, block]);
             setSelectedElement(block);
             setAction((block.type === 'text') ? 'writing' : 'drawing');
