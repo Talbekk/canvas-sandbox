@@ -65,21 +65,21 @@ const createTextBlock = (x1: number, y1: number, width: number, height: number, 
     }
 }
 
-const updateBlock = (id: string, x1: number, y1: number, type: TextBlock['type'], blocks: Array<TextBlock>, setBlocks: (blocks: Array<TextBlock>) => void, options?: {[key: string]: any}) => {
+const updateBlock = (id: string, boundingBox: Box, type: TextBlock['type'], blocks: Array<TextBlock>, setBlocks: (blocks: Array<TextBlock>) => void, options?: {[key: string]: any}) => {
     const updatedBlocks = [...blocks];
     switch (type) {
         case 'text':
-            const canvas: any = document.getElementById('certificates-canvas');
-            if (canvas?.getContext && options) {
-                const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
-                const textWidth = ctx.measureText(options.text).width;
-                const textHeight = 24;
+            // const canvas: any = document.getElementById('certificates-canvas');
+            if (options) {
+                // const ctx: CanvasRenderingContext2D = canvas.getContext('2d');
+                // const textWidth = ctx.measureText(options.text).width;
+                // const textHeight = 24;
                 const updatedBlocksIndex: number = updatedBlocks.findIndex((block: TextBlock) => block.id === id);
                 if(updatedBlocksIndex !== -1) {
-                    updatedBlocks[updatedBlocksIndex] = createTextBlock(x1, y1, textWidth, textHeight, options.text, id);
+                    updatedBlocks[updatedBlocksIndex] = createTextBlock(boundingBox.x, boundingBox.y, boundingBox.width, boundingBox.height, options.text, id);
                 }
             }
-            break;
+                break;
         default:
             throw new Error(`Type not recognised: ${type}`);
     }
@@ -102,25 +102,56 @@ const adjustElementCoordinates = (boundingBox: Box): Box => {
     };
 }
 
-// const resizedCoordinates = (x: number, y: number, position: string | null, boundingBox: Box): Box => {
-//     console.log("hits resize coordinates");
-//     const x2: number = boundingBox.x + boundingBox.width;
-//     const y2: number = boundingBox.y + boundingBox.height;
-//     switch (position) {
-//         case 'top-left':
-//         case "start":
-//             return {...boundingBox, x, y};
-//         case "top-right":
-//             return { x1, y1: y, x2: x, y2 };
-//         case "bottom-left":
-//             return { x1: x, y1, x2, y2: y };
-//         case "bottom-right":
-//         case "end":
-//             return { x1, y1, x2: x, y2: y };
-//         default:
-//             return { x1, x2, y1, y2 };
-//     }
-// }
+const getTopLeftReize = (x: number, y: number, boundingBox: Box): Box => {
+    return {
+        x,
+        y,
+        width: boundingBox.width + (boundingBox.x - x),
+        height: boundingBox.height + (boundingBox.y - y),
+    }
+}
+
+const getTopRightResize = (y: number, boundingBox: Box): Box => {
+    return {
+        x: boundingBox.x,
+        y: y,
+        width: boundingBox.width + (boundingBox.y - y),
+        height: boundingBox.height + (boundingBox.y - y),
+    }
+}
+
+const getBottomLeftResize = (x: number, y: number, boundingBox: Box): Box => {
+    return {
+        x,
+        y: boundingBox.y,
+        width: boundingBox.width + (boundingBox.x - x),
+        height: boundingBox.height + (y - (boundingBox.y + boundingBox.height)),
+    }
+}
+
+const getBottomRightResize = (x: number, boundingBox: Box) => {
+    return {
+        x: boundingBox.x,
+        y: boundingBox.y,
+        width: boundingBox.width + (x - (boundingBox.x + boundingBox.width)),
+        height: boundingBox.height + (x - (boundingBox.x + boundingBox.width)),
+    }
+}
+
+const resizedCoordinates = (x: number, y: number, position: string | null, boundingBox: Box): Box => {
+    switch (position) {
+        case 'top-left':
+            return getTopLeftReize(x, y, boundingBox);
+        case "top-right":
+            return getTopRightResize(y, boundingBox);
+        case "bottom-left":
+            return getBottomLeftResize(x, y, boundingBox);
+        case "bottom-right":
+            return getBottomRightResize(x, boundingBox);
+        default:
+            return boundingBox;
+    }
+}
 
 const cursorForPosition = (position?: TextBlock['position']) => {
     if(!position) return 'move';
@@ -203,10 +234,11 @@ const renderTextBlock = (context: CanvasRenderingContext2D, textBlock: TextBlock
 
     const fontSize = getMaximumFontSizeThatFits(idealFontSize);
     context.font = `${fontSize}px ${fontFamily}`;
-    const x = getAlignmentXOffset(fontSize);
+    const x = getAlignmentXOffset(fontSize); 
     const { y, baseline } = getAlignmentYOffsetAndBaseline();
     context.textBaseline = baseline;
     context.fillStyle = color;
+    context.strokeRect(x, y, boundingBox.width, boundingBox.height);
     context.fillText(text, x, y);
 };
 
@@ -302,17 +334,17 @@ export const DrawingCanvas: FunctionComponent = () => {
 
         if(action === 'drawing' && selectedTool !== 'selection') {
             const id: string = blocks[blocks.length-1].id;
-            updateBlock(id, offsetX, offsetY, selectedTool, blocks, setBlocks);
+            updateBlock(id, { x: offsetX, y: offsetY, width: blocks[blocks.length-1].boundingBox.width, height: blocks[blocks.length-1].boundingBox.width}, selectedTool, blocks, setBlocks);
         } else if (action === 'moving' && selectedBlock) {
             const { id, type, mouseOffsetX, mouseOffsetY } = selectedBlock;
             const updatedOffsetX: number = (mouseOffsetX) ? offsetX - mouseOffsetX : offsetX;
             const updatedOffsetY: number = (mouseOffsetY) ? offsetY - mouseOffsetY : offsetY;
-            updateBlock(id, updatedOffsetX, updatedOffsetY, type, blocks, setBlocks, { text: selectedBlock.text});
+            updateBlock(id, {x: updatedOffsetX, y: updatedOffsetY, width: selectedBlock.boundingBox.width, height: selectedBlock.boundingBox.height}, type, blocks, setBlocks, { text: selectedBlock.text});
         } else if(action === 'resizing' && selectedBlock) {
-            // const { id, type, position, ...coordinates } = selectedBlock;
-            // let options = (type === 'text') ? { text: selectedBlock.text} : {};
-            // const {x1, x2, y1, y2} = resizedCoordinates(offsetX, offsetY, position || null, coordinates);
-            // updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks, options);
+            const { id, type, position, boundingBox} = selectedBlock;
+            let options = (type === 'text') ? { text: selectedBlock.text} : {};
+            const updatedBoundingBox: Box = resizedCoordinates(offsetX, offsetY, position || null, boundingBox);
+            updateBlock(id, {x: updatedBoundingBox.x, y: updatedBoundingBox.y, width: updatedBoundingBox.width, height: updatedBoundingBox.height}, type, blocks, setBlocks, options);
         }
     }, [action, blocks, selectedBlock, selectedTool]);
 
@@ -327,8 +359,8 @@ export const DrawingCanvas: FunctionComponent = () => {
             if(index !== -1) {
                 const {id, type} = blocks[index];
                 if( action === 'drawing' || action === 'resizing') {
-                //    const { x1, y1, x2, y2 } = adjustElementCoordinates(blocks[index]);
-                //    updateBlock(id, x1, y1, x2, y2, type, blocks, setBlocks);
+                   const adjustedBoundingBox: Box = adjustElementCoordinates(blocks[index].boundingBox);
+                   updateBlock(id, {x: adjustedBoundingBox.x, y: adjustedBoundingBox.y, width: adjustedBoundingBox.width, height: adjustedBoundingBox.height}, type, blocks, setBlocks);
                 }
             }
         }
@@ -346,7 +378,7 @@ export const DrawingCanvas: FunctionComponent = () => {
         if(selectedBlock) {
             const { id, boundingBox, type } = selectedBlock;
             setSelectedElement(null);
-            updateBlock(id, boundingBox.x, boundingBox.y, type, blocks, setBlocks, { text: event.target.value });
+            updateBlock(id, boundingBox, type, blocks, setBlocks, { text: event.target.value });
         }
         setAction('none');
     }, [blocks, selectedBlock]);
@@ -381,6 +413,7 @@ export const DrawingCanvas: FunctionComponent = () => {
                         overflow: 'hidden',
                         whiteSpace: 'pre',
                         background: 'transparent',
+                        border: '1px solid black'
                     }} 
                     onBlur={handleBlur} 
             /></div> : null}
